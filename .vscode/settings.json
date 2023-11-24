@@ -1,0 +1,13 @@
+{
+    "files.associations": {
+        "wait_bit.h": "c",
+        "fs.h": "c",
+        "buffer_head.h": "c",
+        "blkdev.h": "c",
+        "vmalloc.h": "c",
+        "slab.h": "c",
+        "attrib.h": "c",
+        "inode.h": "c",
+        "page-flags-layout.h": "c"
+    }
+}
