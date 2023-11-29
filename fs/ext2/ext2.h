@@ -196,13 +196,20 @@ static inline struct ext2_sb_info *EXT2_SB(struct super_block *sb)
 /*
  * Structure of a blocks group descriptor
  */
+// 组描述符用来反映分区中各个组的状态
 struct ext2_group_desc
 {
+	// 表示块位图所在块号
 	__le32	bg_block_bitmap;		/* Blocks bitmap block */
+	// 表示 inode 位图所在块号
 	__le32	bg_inode_bitmap;		/* Inodes bitmap block */
+	// 表示 inode 表所在块号
 	__le32	bg_inode_table;		/* Inodes table block */
+	// 表示空闲块的数量
 	__le16	bg_free_blocks_count;	/* Free blocks count */
+	// 表示空闲 inode 的数量
 	__le16	bg_free_inodes_count;	/* Free inodes count */
+	// 表示目录的数量
 	__le16	bg_used_dirs_count;	/* Directories count */
 	__le16	bg_pad;
 	__le32	bg_reserved[3];
@@ -414,29 +421,53 @@ struct ext2_inode {
 /*
  * Structure of the super block
  */
+// 超级块是文件系统的核心数据结构，其中保存了文件系统所有的特性数据。
+// 操作系统在挂载文件系统时，首先要从磁盘中读取超级块的内容。
+// 在 ext2 文件系统中，可使用 struct ext2_super_block 来描述超级块。
 struct ext2_super_block {
+	// 表示 inode 的数量
 	__le32	s_inodes_count;		/* Inodes count */
+	// 表示块的总数量
 	__le32	s_blocks_count;		/* Blocks count */
+	// 表示预留的块的数量
 	__le32	s_r_blocks_count;	/* Reserved blocks count */
+	// 表示空闲块的数量
 	__le32	s_free_blocks_count;	/* Free blocks count */
+	// 表示空闲 inode 的数量
 	__le32	s_free_inodes_count;	/* Free inodes count */
+	// 表示第一个数据块的编号
 	__le32	s_first_data_block;	/* First Data Block */
+	// 块的大小
 	__le32	s_log_block_size;	/* Block size */
+	// 碎片的长度
 	__le32	s_log_frag_size;	/* Fragment size */
+	// 每个组包含的块的数量
 	__le32	s_blocks_per_group;	/* # Blocks per group */
+	// 每个组包含的碎片的数量
 	__le32	s_frags_per_group;	/* # Fragments per group */
+	// 每个组包含的 inode 的数量
 	__le32	s_inodes_per_group;	/* # Inodes per group */
+	// 挂载时间
 	__le32	s_mtime;		/* Mount time */
+	// 写入时间
 	__le32	s_wtime;		/* Write time */
+	// 挂载次数
 	__le16	s_mnt_count;		/* Mount count */
 	__le16	s_max_mnt_count;	/* Maximal mount count */
+	// 魔数，用来标记文件系统类型
 	__le16	s_magic;		/* Magic signature */
+	// 文件系统状态
 	__le16	s_state;		/* File system state */
+	// 检查到错误的次数
 	__le16	s_errors;		/* Behaviour when detecting errors */
 	__le16	s_minor_rev_level; 	/* minor revision level */
+	// 上一次检查的时间
 	__le32	s_lastcheck;		/* time of last check */
+	// 两次检查允许的最长时间间隔
 	__le32	s_checkinterval;	/* max. time between checks */
+	// 创建这一文件系统的操作系统
 	__le32	s_creator_os;		/* OS */
+	// 修订号
 	__le32	s_rev_level;		/* Revision level */
 	__le16	s_def_resuid;		/* Default uid for reserved blocks */
 	__le16	s_def_resgid;		/* Default gid for reserved blocks */
@@ -651,11 +682,18 @@ struct ext2_mount_options {
 /*
  * second extended file system inode data in memory
  */
+// inode 用来描述目录或文件，在 ext2 文件系统里，
+// 可以使用 struct ext2_inode_info 数据结构来描述 inode
 struct ext2_inode_info {
+	// 指向文件数据块的指针
 	__le32	i_data[15];
+	// 文件标志
 	__u32	i_flags;
+	// 碎片地址
 	__u32	i_faddr;
+	// 碎片编号
 	__u8	i_frag_no;
+	// 碎片长度
 	__u8	i_frag_size;
 	__u16	i_state;
 	__u32	i_file_acl;

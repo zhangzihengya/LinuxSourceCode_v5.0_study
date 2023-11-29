@@ -8,6 +8,7 @@
         "slab.h": "c",
         "attrib.h": "c",
         "inode.h": "c",
-        "page-flags-layout.h": "c"
+        "page-flags-layout.h": "c",
+        "typeinfo": "cpp"
     }
 }

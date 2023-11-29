@@ -600,12 +600,13 @@ struct fsnotify_mark_connector;
  * the RCU path lookup and 'stat' data) fields at the beginning
  * of the 'struct inode'
  */
+// inode 对象包含文件或目录所需要的全部信息，inode 对象可由 inode 数据结构来描述
 struct inode {
-	umode_t			i_mode;
+	umode_t			i_mode;		// 访问权限
 	unsigned short		i_opflags;
-	kuid_t			i_uid;
-	kgid_t			i_gid;
-	unsigned int		i_flags;
+	kuid_t			i_uid;		// 使用者的 id
+	kgid_t			i_gid;		// 使用组的 id
+	unsigned int		i_flags;	// 文件系统相关的标志位
 
 #ifdef CONFIG_FS_POSIX_ACL
 	struct posix_acl	*i_acl;
@@ -613,15 +614,15 @@ struct inode {
 #endif
 
 	const struct inode_operations	*i_op;
-	struct super_block	*i_sb;
-	struct address_space	*i_mapping;
+	struct super_block	*i_sb;		// inode 对象对应的超级块
+	struct address_space	*i_mapping;		// inode 对象对应的页缓存地址空间
 
 #ifdef CONFIG_SECURITY
 	void			*i_security;
 #endif
 
 	/* Stat data, not accessed from path walking */
-	unsigned long		i_ino;
+	unsigned long		i_ino;		// inode 对象对应的编号
 	/*
 	 * Filesystems may only read i_nlink directly.  They shall use the
 	 * following functions for modification:
@@ -634,22 +635,22 @@ struct inode {
 		unsigned int __i_nlink;
 	};
 	dev_t			i_rdev;
-	loff_t			i_size;
-	struct timespec64	i_atime;
-	struct timespec64	i_mtime;
-	struct timespec64	i_ctime;
+	loff_t			i_size;			// 文件大小
+	struct timespec64	i_atime;	// 最后访问时间
+	struct timespec64	i_mtime;	// 最后修改时间
+	struct timespec64	i_ctime;	// 最后改变时间
 	spinlock_t		i_lock;	/* i_blocks, i_bytes, maybe i_size */
-	unsigned short          i_bytes;
+	unsigned short          i_bytes;	// 使用的字节数
 	u8			i_blkbits;
 	u8			i_write_hint;
-	blkcnt_t		i_blocks;
+	blkcnt_t		i_blocks;		// 文件的块数
 
 #ifdef __NEED_I_SIZE_ORDERED
 	seqcount_t		i_size_seqcount;
 #endif
 
 	/* Misc */
-	unsigned long		i_state;
+	unsigned long		i_state;		// inode 对应的状态
 	struct rw_semaphore	i_rwsem;
 
 	unsigned long		dirtied_when;	/* jiffies of first dirtying */
@@ -898,13 +899,17 @@ static inline int ra_has_index(struct file_ra_state *ra, pgoff_t index)
 		index <  ra->start + ra->size);
 }
 
+// 用来描述文件对象
 struct file {
 	union {
 		struct llist_node	fu_llist;
 		struct rcu_head 	fu_rcuhead;
 	} f_u;
+	// 表示文件的路径
 	struct path		f_path;
+	// 文件对应的 inode
 	struct inode		*f_inode;	/* cached value */
+	// 文件对应的操作方法集
 	const struct file_operations	*f_op;
 
 	/*
@@ -913,10 +918,14 @@ struct file {
 	 */
 	spinlock_t		f_lock;
 	enum rw_hint		f_write_hint;
+	// 文件使用的计数
 	atomic_long_t		f_count;
+	// 文件打开时指定的标志位
 	unsigned int 		f_flags;
+	// 文件的访问模式
 	fmode_t			f_mode;
 	struct mutex		f_pos_lock;
+	// 文件当前的偏移量
 	loff_t			f_pos;
 	struct fown_struct	f_owner;
 	const struct cred	*f_cred;
@@ -934,6 +943,7 @@ struct file {
 	struct list_head	f_ep_links;
 	struct list_head	f_tfile_llink;
 #endif /* #ifdef CONFIG_EPOLL */
+	// 页缓存对象
 	struct address_space	*f_mapping;
 	errseq_t		f_wb_err;
 } __randomize_layout
@@ -1381,23 +1391,24 @@ struct sb_writers {
 	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS];
 };
 
+// Linux 内核的 VFS 采用 super_block 数据结构来描述超级块对象
 struct super_block {
 	struct list_head	s_list;		/* Keep this first */
 	dev_t			s_dev;		/* search index; _not_ kdev_t */
 	unsigned char		s_blocksize_bits;
-	unsigned long		s_blocksize;
+	unsigned long		s_blocksize;		// 块的大小
 	loff_t			s_maxbytes;	/* Max file size */
-	struct file_system_type	*s_type;
-	const struct super_operations	*s_op;
+	struct file_system_type	*s_type;	// 文件系统类型
+	const struct super_operations	*s_op;	// 超级块对象中定义的一组操作方法集
 	const struct dquot_operations	*dq_op;
 	const struct quotactl_ops	*s_qcop;
 	const struct export_operations *s_export_op;
-	unsigned long		s_flags;
+	unsigned long		s_flags;		// 挂载标志位
 	unsigned long		s_iflags;	/* internal SB_I_* flags */
-	unsigned long		s_magic;
-	struct dentry		*s_root;
+	unsigned long		s_magic;		// 挂载时的魔数
+	struct dentry		*s_root;		// 挂载点
 	struct rw_semaphore	s_umount;
-	int			s_count;
+	int			s_count;				// 超级块引用计数
 	atomic_t		s_active;
 #ifdef CONFIG_SECURITY
 	void                    *s_security;
@@ -1422,6 +1433,7 @@ struct super_block {
 	 * s_fsnotify_marks together for cache efficiency. They are frequently
 	 * accessed and rarely modified.
 	 */
+	// 文件系统相关的信息
 	void			*s_fs_info;	/* Filesystem private info */
 
 	/* Granularity of c/m/atime in ns (cannot be worse than a second) */
@@ -1435,7 +1447,7 @@ struct super_block {
 	uuid_t			s_uuid;		/* UUID */
 
 	unsigned int		s_max_links;
-	fmode_t			s_mode;
+	fmode_t			s_mode;		// 挂载权限
 
 	/*
 	 * The next field is for VFS *only*. No filesystems have any business
@@ -1781,7 +1793,7 @@ struct block_device_operations;
 struct iov_iter;
 
 struct file_operations {
-	struct module *owner;
+	struct module *owner;		// 表示文件的所有者
 	loff_t (*llseek) (struct file *, loff_t, int);		// 修改文件的当前读写位置，并返回新位置
 	ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);		// 从设备驱动中读取数据到用户空间，并返回成功读取的字节数。若返回负数，则说明读取失败
 	ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);	// 把用户空间的数据写入设备，并返回成功写入的字节数

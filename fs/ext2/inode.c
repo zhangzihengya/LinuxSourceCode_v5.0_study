@@ -774,6 +774,13 @@ cleanup:
 	return err;
 }
 
+// 在 ext2 文件系统中，可使用 ext2_get_block() 来查询和分配空闲块
+// ext2_get_block() 函数会分配空闲块和 bh 缓存并建立两者的映射关系
+// inode :文件的inode
+// iblock :当前块是文件中的第几个块
+// bh_result :块层的缓存
+// create :表示是否分配新的块
+// ext4 等现代文件系统采用 B 树来紧凑地表示哪些块是空闲的，这比直接使用位图的方式更高效
 int ext2_get_block(struct inode *inode, sector_t iblock,
 		struct buffer_head *bh_result, int create)
 {
