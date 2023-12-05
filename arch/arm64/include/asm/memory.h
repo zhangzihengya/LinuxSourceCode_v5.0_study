@@ -147,9 +147,17 @@
 /*
  * Memory types available.
  */
+// 内存属性并没有存放在页表项中，而是存放在 MAIR_ELn 中。页表项中使用一个 3 位的索引值来查找 MAIR_ELn
+// 设备内存属性：
+// G 和 nG 分别表示聚合和不聚合
+// R 和 nR 分别表示指令重排与不重排
+// E 和 nE 分别表示提前应答与不提前应答
 #define MT_DEVICE_nGnRnE	0
 #define MT_DEVICE_nGnRE		1
 #define MT_DEVICE_GRE		2
+// 普通内存属性：
+// NC 使关闭高速缓存的意思
+// WT 表示高速缓存的回写策略为直写策略
 #define MT_NORMAL_NC		3
 #define MT_NORMAL		4
 #define MT_NORMAL_WT		5
@@ -244,6 +252,7 @@ extern u64			vabits_user;
  * space. Testing the top bit for the start of the region is a
  * sufficient check.
  */
+// 用于判断虚拟地址是否为线性映射的虚拟地址
 #define __is_lm_address(addr)	(!!((addr) & BIT(VA_BITS - 1)))
 
 #define __lm_to_phys(addr)	(((addr) & ~PAGE_OFFSET) + PHYS_OFFSET)
@@ -265,6 +274,7 @@ extern phys_addr_t __phys_addr_symbol(unsigned long x);
 #define __phys_addr_symbol(x)	__pa_symbol_nodebug(x)
 #endif
 
+// 用于根据物理地址计算线性映射的虚拟地址
 #define __phys_to_virt(x)	((unsigned long)((x) - PHYS_OFFSET) | PAGE_OFFSET)
 #define __phys_to_kimg(x)	((unsigned long)((x) + kimage_voffset))
 
@@ -294,8 +304,11 @@ static inline void *phys_to_virt(phys_addr_t x)
 /*
  * Drivers should NOT use these either.
  */
+// 内存线性映射建立之后，使用 __pa 宏把内核虚拟地址转换为物理地址
 #define __pa(x)			__virt_to_phys((unsigned long)(x))
+// 内存线性映射建立之前，使用 __pa_symbol 宏把内核虚拟地址转换为物理地址
 #define __pa_symbol(x)		__phys_addr_symbol(RELOC_HIDE((unsigned long)(x), 0))
+// 用于根据线性映射的虚拟地址计算物理地址
 #define __pa_nodebug(x)		__virt_to_phys_nodebug((unsigned long)(x))
 #define __va(x)			((void *)__phys_to_virt((phys_addr_t)(x)))
 #define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)

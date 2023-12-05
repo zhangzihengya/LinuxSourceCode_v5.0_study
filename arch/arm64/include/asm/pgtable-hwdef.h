@@ -51,6 +51,7 @@
  */
 #define ARM64_HW_PGTABLE_LEVEL_SHIFT(n)	((PAGE_SHIFT - 3) * (4 - (n)) + 3)
 
+// 例：如果设置了页面粒度为 4KB，则页表的偏移量是从第 12 位开始的
 #define PTRS_PER_PTE		(1 << (PAGE_SHIFT - 3))
 
 /*
@@ -69,6 +70,7 @@
 #if CONFIG_PGTABLE_LEVELS > 3
 #define PUD_SHIFT		ARM64_HW_PGTABLE_LEVEL_SHIFT(1)
 #define PUD_SIZE		(_AC(1, UL) << PUD_SHIFT)
+// PUD_MASK 宏用来屏蔽虚拟地址中的 PMD 索引和 PT 索引字段的所有位
 #define PUD_MASK		(~(PUD_SIZE-1))
 #define PTRS_PER_PUD		PTRS_PER_PTE
 #endif
@@ -77,9 +79,13 @@
  * PGDIR_SHIFT determines the size a top-level page table entry can map
  * (depending on the configuration, this level can be 0, 1 or 2).
  */
+// PGDIR_SHIFT 宏表示 PGD 页表在虚拟地址中的起始偏移量
 #define PGDIR_SHIFT		ARM64_HW_PGTABLE_LEVEL_SHIFT(4 - CONFIG_PGTABLE_LEVELS)
+// PGDIR_SIZE 宏表示 PGD 页表项所能映射的区域大小
 #define PGDIR_SIZE		(_AC(1, UL) << PGDIR_SHIFT)
+// PGDIR_MASK 宏用来屏蔽虚拟地址中的 PUD 索引、PMD 索引以及 PT 索引字段的所有位
 #define PGDIR_MASK		(~(PGDIR_SIZE-1))
+// PTRS_PER_PGD 宏表示 PGD 页表中页表项的个数
 #define PTRS_PER_PGD		(1 << (MAX_USER_VA_BITS - PGDIR_SHIFT))
 
 /*
@@ -87,6 +93,7 @@
  */
 #define SECTION_SHIFT		PMD_SHIFT
 #define SECTION_SIZE		(_AC(1, UL) << SECTION_SHIFT)
+// PGDIR_MASK 宏用来屏蔽虚拟地址中的 PT 索引字段的所有位
 #define SECTION_MASK		(~(SECTION_SIZE-1))
 
 /*
@@ -153,6 +160,7 @@
 /*
  * Level 3 descriptor (PTE).
  */
+// L3 页表项描述符
 #define PTE_TYPE_MASK		(_AT(pteval_t, 3) << 0)
 #define PTE_TYPE_FAULT		(_AT(pteval_t, 0) << 0)
 #define PTE_TYPE_PAGE		(_AT(pteval_t, 3) << 0)

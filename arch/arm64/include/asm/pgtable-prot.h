@@ -24,6 +24,7 @@
 /*
  * Software defined PTE bits definition.
  */
+// 软件定义的 PTE 标志位属性
 #define PTE_VALID		(_AT(pteval_t, 1) << 0)
 #define PTE_WRITE		(PTE_DBM)		 /* same as DBM (51) */
 #define PTE_DIRTY		(_AT(pteval_t, 1) << 55)
@@ -56,10 +57,15 @@
 #define _PAGE_DEFAULT		(_PROT_DEFAULT | PTE_ATTRINDX(MT_NORMAL))
 #define _HYP_PAGE_DEFAULT	_PAGE_DEFAULT
 
+// 内核中的普通内存页面
 #define PAGE_KERNEL		__pgprot(PROT_NORMAL)
+// 内核中只读的普通内存页面
 #define PAGE_KERNEL_RO		__pgprot((PROT_NORMAL & ~PTE_WRITE) | PTE_RDONLY)
+// 内核中只读的可执行的普通页面
 #define PAGE_KERNEL_ROX		__pgprot((PROT_NORMAL & ~(PTE_WRITE | PTE_PXN)) | PTE_RDONLY)
+// 内核中可执行的普通页面
 #define PAGE_KERNEL_EXEC	__pgprot(PROT_NORMAL & ~PTE_PXN)
+// 内核中可执行的普通页面，并且是物理连续的多个页面
 #define PAGE_KERNEL_EXEC_CONT	__pgprot((PROT_NORMAL & ~PTE_PXN) | PTE_CONT)
 
 #define PAGE_HYP		__pgprot(_HYP_PAGE_DEFAULT | PTE_HYP | PTE_HYP_XN)

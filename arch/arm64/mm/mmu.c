@@ -170,6 +170,7 @@ static void init_pte(pmd_t *pmdp, unsigned long addr, unsigned long end,
 	pte_clear_fixmap();
 }
 
+// 配置 PTE
 static void alloc_init_cont_pte(pmd_t *pmdp, unsigned long addr,
 				unsigned long end, phys_addr_t phys,
 				pgprot_t prot,
@@ -180,6 +181,7 @@ static void alloc_init_cont_pte(pmd_t *pmdp, unsigned long addr,
 	pmd_t pmd = READ_ONCE(*pmdp);
 
 	BUG_ON(pmd_sect(pmd));
+	// 判断 PMD 页表项的内容是否为空
 	if (pmd_none(pmd)) {
 		phys_addr_t pte_phys;
 		BUG_ON(!pgtable_alloc);
@@ -189,6 +191,7 @@ static void alloc_init_cont_pte(pmd_t *pmdp, unsigned long addr,
 	}
 	BUG_ON(pmd_bad(pmd));
 
+	// 以 PAGE_SIZE，即 4KB 大小为步长，通过 while 循环来设置 PTE
 	do {
 		pgprot_t __prot = prot;
 
@@ -199,6 +202,7 @@ static void alloc_init_cont_pte(pmd_t *pmdp, unsigned long addr,
 		    (flags & NO_CONT_MAPPINGS) == 0)
 			__prot = __pgprot(pgprot_val(prot) | PTE_CONT);
 
+		// init_pte() 函数最终调用 set_pte() 来设置 PTE 内容到物理页表中
 		init_pte(pmdp, addr, next, phys, __prot);
 
 		phys += next - addr;
@@ -213,14 +217,17 @@ static void init_pmd(pud_t *pudp, unsigned long addr, unsigned long end,
 	pmd_t *pmdp;
 
 	pmdp = pmd_set_fixmap_offset(pudp, addr);
+	// 以 PMD_SIZE 为步长，通过 while 循环来设置下一级页表
 	do {
 		pmd_t old_pmd = READ_ONCE(*pmdp);
 
 		next = pmd_addr_end(addr, end);
 
 		/* try section mapping first */
+		// 判断是否与 SECTION_MASK 的大小对齐
 		if (((addr | next | phys) & ~SECTION_MASK) == 0 &&
 		    (flags & NO_BLOCK_MAPPINGS) == 0) {
+			// 如果大小对齐，那么直接设置 PMD 页表项，不需要映射下一级页表
 			pmd_set_huge(pmdp, phys, prot);
 
 			/*
@@ -230,6 +237,7 @@ static void init_pmd(pud_t *pudp, unsigned long addr, unsigned long end,
 			BUG_ON(!pgattr_change_is_safe(pmd_val(old_pmd),
 						      READ_ONCE(pmd_val(*pmdp))));
 		} else {
+			// 如果映射的内存不是和 SECTION_SIZE 大小对齐的，则需要通过 alloc_init_cont_pte 来映射下一级 PTE
 			alloc_init_cont_pte(pmdp, addr, next, phys, prot,
 					    pgtable_alloc, flags);
 
@@ -242,6 +250,7 @@ static void init_pmd(pud_t *pudp, unsigned long addr, unsigned long end,
 	pmd_clear_fixmap();
 }
 
+// 用于配置 PMD 页表
 static void alloc_init_cont_pmd(pud_t *pudp, unsigned long addr,
 				unsigned long end, phys_addr_t phys,
 				pgprot_t prot,
@@ -254,6 +263,8 @@ static void alloc_init_cont_pmd(pud_t *pudp, unsigned long addr,
 	 * Check for initial section mappings in the pgd/pud.
 	 */
 	BUG_ON(pud_sect(pud));
+	// 判断 PUD 页表项的内容是否为空
+	// 如果为空，表示 PUD 指向的 PMD 不存在
 	if (pud_none(pud)) {
 		phys_addr_t pmd_phys;
 		BUG_ON(!pgtable_alloc);
@@ -263,6 +274,7 @@ static void alloc_init_cont_pmd(pud_t *pudp, unsigned long addr,
 	}
 	BUG_ON(pud_bad(pud));
 
+	// 以 PMD_SIZE 为步长，通过 while 循环来设置下一级页表
 	do {
 		pgprot_t __prot = prot;
 
@@ -273,6 +285,7 @@ static void alloc_init_cont_pmd(pud_t *pudp, unsigned long addr,
 		    (flags & NO_CONT_MAPPINGS) == 0)
 			__prot = __pgprot(pgprot_val(prot) | PTE_CONT);
 
+		// 初始化 PT 与设置 PMD 页表项
 		init_pmd(pudp, addr, next, phys, __prot, pgtable_alloc, flags);
 
 		phys += next - addr;
@@ -300,16 +313,21 @@ static void alloc_init_pud(pgd_t *pgdp, unsigned long addr, unsigned long end,
 	pud_t *pudp;
 	pgd_t pgd = READ_ONCE(*pgdp);
 
+	// 判断当前 PGD 页表项的内容是否为空
+	// 若 PGD 页表项的内容为空，说明下一级页表为空，那么需要动态分配下一级页表
 	if (pgd_none(pgd)) {
 		phys_addr_t pud_phys;
 		BUG_ON(!pgtable_alloc);
 		pud_phys = pgtable_alloc();
+		// 把刚分配的 PUD 页表的基地址设置到相应的 PGD 页表项中
 		__pgd_populate(pgdp, pud_phys, PUD_TYPE_TABLE);
 		pgd = READ_ONCE(*pgdp);
 	}
 	BUG_ON(pgd_bad(pgd));
 
+	// 获取相应的 PUD 表项
 	pudp = pud_set_fixmap_offset(pgdp, addr);
+	// 以 PUD_SIZE 为步长，通过 while 循环来设置下一级页表
 	do {
 		pud_t old_pud = READ_ONCE(*pudp);
 
@@ -318,8 +336,11 @@ static void alloc_init_pud(pgd_t *pgdp, unsigned long addr, unsigned long end,
 		/*
 		 * For 4K granule only, attempt to put down a 1GB block
 		 */
+		// use_1G_block() 函数判断是否使用 1GB 大小的内存块来映射
 		if (use_1G_block(addr, next, phys) &&
 		    (flags & NO_BLOCK_MAPPINGS) == 0) {
+			// 如果这里要映射的内存块大小正好是 PUD_SIZE，那么只需要映射到 PUD 即可，接下来的 PMD 和 PTE 等到真正需要使用时再映射
+			// 设置相应的 PUD 页表项
 			pud_set_huge(pudp, phys, prot);
 
 			/*
@@ -329,6 +350,7 @@ static void alloc_init_pud(pgd_t *pgdp, unsigned long addr, unsigned long end,
 			BUG_ON(!pgattr_change_is_safe(pud_val(old_pud),
 						      READ_ONCE(pud_val(*pudp))));
 		} else {
+			// 若不能通过 1GB 大小的内存块来映射，则调用 alloc_init_cont_pmd() 函数来进行下一级页表的映射
 			alloc_init_cont_pmd(pudp, addr, next, phys, prot,
 					    pgtable_alloc, flags);
 
@@ -341,6 +363,8 @@ static void alloc_init_pud(pgd_t *pgdp, unsigned long addr, unsigned long end,
 	pud_clear_fixmap();
 }
 
+// 在内核初始化阶段对内核空间的页表进行映射
+// 通过层层循环初始化各级页表
 static void __create_pgd_mapping(pgd_t *pgdir, phys_addr_t phys,
 				 unsigned long virt, phys_addr_t size,
 				 pgprot_t prot,
@@ -362,8 +386,11 @@ static void __create_pgd_mapping(pgd_t *pgdir, phys_addr_t phys,
 	length = PAGE_ALIGN(size + (virt & ~PAGE_MASK));
 
 	end = addr + length;
+	// 以 PGDIR_SIZE 为步长遍历内存区域[virt,virt+size]
 	do {
+		// pgd_addr_end() 以 PGDIR_SIZE 为步长
 		next = pgd_addr_end(addr, end);
+		// 初始化化 PGD 页表项内容和 PUD
 		alloc_init_pud(pgdp, addr, next, phys, prot, pgtable_alloc,
 			       flags);
 		phys += next - addr;
@@ -602,6 +629,7 @@ core_initcall(map_entry_trampoline);
 /*
  * Create fine-grained mappings for the kernel.
  */
+// 对内核映像的各个段分别进行映射，映射到内核空间的虚拟地址为 vmalloc 区域
 static void __init map_kernel(pgd_t *pgdp)
 {
 	static struct vm_struct vmlinux_text, vmlinux_rodata, vmlinux_inittext,
@@ -659,13 +687,20 @@ static void __init map_kernel(pgd_t *pgdp)
  * paging_init() sets up the page tables, initialises the zone memory
  * maps and sets up the zero page.
  */
+// 对内核空间的多个内存段做重新映射
 void __init paging_init(void)
 {
+	// swapper_pg_dir 是内核页表的 PGD 页表虚拟基地址
+	// __pa_symbol() 宏把内核符号的虚拟地址转换为物理地址
+	// pgd_set_fixmap() 函数把 swapper_pg_dir 页表重新映射到固定映射区域，返回 PGD 页表的虚拟地址
 	pgd_t *pgdp = pgd_set_fixmap(__pa_symbol(swapper_pg_dir));
 
+	// 对内核映像文件的各个块重新映射
 	map_kernel(pgdp);
+	// 物理内存的线性映射
 	map_mem(pgdp);
 
+	// 用于取消固定区域的映射
 	pgd_clear_fixmap();
 
 	cpu_replace_ttbr1(lm_alias(swapper_pg_dir));

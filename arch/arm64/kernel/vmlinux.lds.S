@@ -4,6 +4,7 @@
  * taken from the i386 version by Russell King
  * Written by Martin Mares <mj@atrey.karlin.mff.cuni.cz>
  */
+// Linux 内核的链接脚本，作用是把大量编译好的二进制文件（.o文件）合并为一个二进制可执行文件
 
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/cache.h>

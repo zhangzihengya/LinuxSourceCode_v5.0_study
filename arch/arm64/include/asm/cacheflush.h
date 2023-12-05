@@ -82,6 +82,7 @@ extern void __clean_dcache_area_pou(void *addr, size_t len);
 extern long __flush_cache_user_range(unsigned long start, unsigned long end);
 extern void sync_icache_aliases(void *kaddr, unsigned long len);
 
+// 用于同步由虚拟地址 start 和 end 组成的区域的指令高速缓存与数据高速缓存的一致性
 static inline void flush_icache_range(unsigned long start, unsigned long end)
 {
 	__flush_icache_range(start, end);
@@ -106,15 +107,18 @@ static inline void flush_icache_range(unsigned long start, unsigned long end)
 	kick_all_cpus_sync();
 }
 
+// 在修改页表之前清除和无效该进程地址空间中所有的高速缓存页表项
 static inline void flush_cache_mm(struct mm_struct *mm)
 {
 }
 
+// 用于清除由虚拟地址 addr 和页帧号 pfn 对应的高速缓存页表项
 static inline void flush_cache_page(struct vm_area_struct *vma,
 				    unsigned long user_addr, unsigned long pfn)
 {
 }
 
+// 用于清除由虚拟地址 start 和 end 组成的区域中所有的高速缓存
 static inline void flush_cache_range(struct vm_area_struct *vma,
 				     unsigned long start, unsigned long end)
 {

@@ -28,6 +28,7 @@
 
 static struct kmem_cache *pgd_cache __ro_after_init;
 
+// 分配一个全新的 PGD 页表，通常进程创建时会使用该函数来创建进程的 PGD 页表
 pgd_t *pgd_alloc(struct mm_struct *mm)
 {
 	if (PGD_SIZE == PAGE_SIZE)
@@ -36,6 +37,7 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 		return kmem_cache_alloc(pgd_cache, PGALLOC_GFP);
 }
 
+// 释放 PGD 页表
 void pgd_free(struct mm_struct *mm, pgd_t *pgd)
 {
 	if (PGD_SIZE == PAGE_SIZE)

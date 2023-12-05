@@ -361,6 +361,7 @@ enum zone_type {
 
 #ifndef __GENERATING_BOUNDS_H
 
+// 内存管理区，zone 经常会被访问到，因此这个数据结构要求以 L1 高速缓存对齐
 struct zone {
 	/* Read-mostly fields */
 
@@ -380,7 +381,7 @@ struct zone {
 	 * recalculated at runtime if the sysctl_lowmem_reserve_ratio sysctl
 	 * changes.
 	 */
-	// 内存管理区中预留的内存
+	// 内存管理区中预留的内存，防止页面分配器过度使用低端 zone 的内存
 	long lowmem_reserve[MAX_NR_ZONES];
 
 #ifdef CONFIG_NUMA
@@ -396,6 +397,7 @@ struct zone {
 	 * Flags for a pageblock_nr_pages block. See pageblock-flags.h.
 	 * In SPARSEMEM, this map is stored in struct mem_section
 	 */
+	// 指向用于存放每个页块的 MIGRATE_TYPES 类型的内存空间，内存空间大小通过 usemap_size() 函数来计算
 	unsigned long		*pageblock_flags;
 #endif /* CONFIG_SPARSEMEM */
 
@@ -475,6 +477,7 @@ struct zone {
 	unsigned long		flags;
 
 	/* Primarily protects free_area */
+	// 并行访问时用于保护 zone 的自旋锁
 	spinlock_t		lock;
 
 	/* Write-intensive fields used by compaction and vmstats. */

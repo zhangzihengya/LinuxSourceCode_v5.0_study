@@ -44,6 +44,8 @@ ENTRY(__flush_icache_range)
  *	Ensure that the I and D caches are coherent within specified region.
  *	This is typically used when code has been written to a memory region,
  *	and will be executed.
+ *	
+ *	确保I和D缓存在指定区域内是一致的。这通常在代码被写入内存区域并将被执行时使用。
  *
  *	- start   - virtual start address of region
  *	- end     - virtual end address of region

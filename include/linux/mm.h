@@ -2001,6 +2001,7 @@ static inline void pgtable_page_dtor(struct page *page)
 	dec_zone_page_state(page, NR_PAGETABLE);
 }
 
+// 在 pte_offset_map 函数的基础上申请了 page 数据结构中 ptlp 自旋锁的保护
 #define pte_offset_map_lock(mm, pmd, address, ptlp)	\
 ({							\
 	spinlock_t *__ptl = pte_lockptr(mm, pmd);	\
@@ -2010,11 +2011,13 @@ static inline void pgtable_page_dtor(struct page *page)
 	__pte;						\
 })
 
+// 和 pte_offset_map_lock 函数配套使用
 #define pte_unmap_unlock(pte, ptl)	do {		\
 	spin_unlock(ptl);				\
 	pte_unmap(pte);					\
 } while (0)
 
+// 分配一个新的页表，当 pmd 页表项为空时使用新分配的页表来设置这个 pmd 页表项
 #define pte_alloc(mm, pmd) (unlikely(pmd_none(*(pmd))) && __pte_alloc(mm, pmd))
 
 #define pte_alloc_map(mm, pmd, address)			\

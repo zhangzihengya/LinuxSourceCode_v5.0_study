@@ -1303,6 +1303,7 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	local_irq_restore(flags);
 }
 
+// 得到 order 值后，就可以把内存块通过 __free_pages_boot_core 函数添加到伙伴系统中
 static void __init __free_pages_boot_core(struct page *page, unsigned int order)
 {
 	unsigned int nr_pages = 1 << order;
@@ -1320,6 +1321,7 @@ static void __init __free_pages_boot_core(struct page *page, unsigned int order)
 
 	atomic_long_add(nr_pages, &page_zone(page)->managed_pages);
 	set_page_refcounted(page);
+	// 伙伴系统的核心函数
 	__free_pages(page, order);
 }
 
@@ -6522,6 +6524,7 @@ void __ref free_area_init_core_hotplug(int nid)
  * NOTE: pgdat should get zeroed by caller.
  * NOTE: this function is only called during early init.
  */
+// zone 的初始化函数
 static void __init free_area_init_core(struct pglist_data *pgdat)
 {
 	enum zone_type j;
@@ -6581,6 +6584,7 @@ static void __init free_area_init_core(struct pglist_data *pgdat)
 			continue;
 
 		set_pageblock_order();
+		// 调用 setup_usemap() 函数计算和分配 pageblock_flags 所需要的大小，并且分配相应的内存
 		setup_usemap(pgdat, zone, zone_start_pfn, size);
 		init_currently_empty_zone(zone, zone_start_pfn, size);
 		memmap_init(size, nid, j, zone_start_pfn);

@@ -38,6 +38,8 @@ typedef struct {
  * ASID change and therefore doesn't need to reload the counter using
  * atomic64_read.
  */
+// ASID（进程地址空间ID）用于为每个进程分配进程地址空间标识，TLB 命中查询的标准由原来的虚拟地址判断再加上 ASID 条件
+// ASID 软件计数存放在 mm->context.id 的 Bit[31:8] 中
 #define ASID(mm)	((mm)->context.id.counter & 0xffff)
 
 static inline bool arm64_kernel_unmapped_at_el0(void)

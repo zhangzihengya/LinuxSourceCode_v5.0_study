@@ -212,6 +212,7 @@ static phys_addr_t __init max_zone_dma_phys(void)
 
 #ifdef CONFIG_NUMA
 
+// 定义 zone 的大小
 static void __init zone_sizes_init(unsigned long min, unsigned long max)
 {
 	unsigned long max_zone_pfns[MAX_NR_ZONES]  = {0};

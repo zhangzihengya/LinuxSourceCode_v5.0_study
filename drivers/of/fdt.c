@@ -1025,8 +1025,9 @@ u64 __init dt_mem_next_cell(int s, const __be32 **cellp)
 }
 
 /**
- * early_init_dt_scan_memory - Look for and parse memory nodes
+ * early_init_dt_scan_memory - 查找并解析内存节点
  */
+// 在内核启动过程中，解析 DTS 文件
 int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 				     int depth, void *data)
 {
@@ -1053,6 +1054,7 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 	while ((endp - reg) >= (dt_root_addr_cells + dt_root_size_cells)) {
 		u64 base, size;
 
+		// 解析 memory 描述的信息从而得到内存的 base 和 size 信息
 		base = dt_mem_next_cell(dt_root_addr_cells, &reg);
 		size = dt_mem_next_cell(dt_root_size_cells, &reg);
 
@@ -1061,6 +1063,7 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 		pr_debug(" - %llx ,  %llx\n", (unsigned long long)base,
 		    (unsigned long long)size);
 
+		// 添加到 memblock 子系统中
 		early_init_dt_add_memory_arch(base, size);
 
 		if (!hotpluggable)
