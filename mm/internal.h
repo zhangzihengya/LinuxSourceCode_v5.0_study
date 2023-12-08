@@ -115,11 +115,17 @@ extern pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address);
  * by a const pointer.
  */
 struct alloc_context {
+	// 指向每一个内存节点对应的 zonelist
 	struct zonelist *zonelist;
+	// 表示内存节点的掩码
 	nodemask_t *nodemask;
+	// 表示首选 zone 的 zoneref
 	struct zoneref *preferred_zoneref;
+	// 表示迁移类型
 	int migratetype;
+	// 分配掩码计算 zone 的 zoneidx，表示这个分配掩码允许内存分配的最高 zone
 	enum zone_type high_zoneidx;
+	// 用于指定是否传播脏页
 	bool spread_dirty_pages;
 };
 

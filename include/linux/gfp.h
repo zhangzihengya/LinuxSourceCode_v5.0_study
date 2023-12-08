@@ -504,6 +504,7 @@ static inline struct page *alloc_pages_node(int nid, gfp_t gfp_mask,
 extern struct page *alloc_pages_current(gfp_t gfp_mask, unsigned order);
 
 // 用来分配 2 的 order 次幂个连续的物理页面
+// 参数：gfp_mask 表示分配掩码，是描述页面分配方法的标志，它影响着页面分配的整个流程。order 表示分配级数
 // 返回值是第一个物理页面的 page 数据结构
 static inline struct page *
 alloc_pages(gfp_t gfp_mask, unsigned int order)
@@ -523,6 +524,7 @@ extern struct page *alloc_pages_vma(gfp_t gfp_mask, int order,
 #define alloc_hugepage_vma(gfp_mask, vma, addr, order) \
 	alloc_pages(gfp_mask, order)
 #endif
+// 分配一个物理页面，使用 alloc_page 分配的物理页面理论上可能被随机地填充了某些垃圾信息
 #define alloc_page(gfp_mask) alloc_pages(gfp_mask, 0)
 #define alloc_page_vma(gfp_mask, vma, addr)			\
 	alloc_pages_vma(gfp_mask, 0, vma, addr, numa_node_id(), false)
@@ -530,18 +532,21 @@ extern struct page *alloc_pages_vma(gfp_t gfp_mask, int order,
 	alloc_pages_vma(gfp_mask, 0, vma, addr, node, false)
 
 extern unsigned long __get_free_pages(gfp_t gfp_mask, unsigned int order);
+// 分配一个全部填充为 0 的页面
 extern unsigned long get_zeroed_page(gfp_t gfp_mask);
 
 void *alloc_pages_exact(size_t size, gfp_t gfp_mask);
 void free_pages_exact(void *virt, size_t size);
 void * __meminit alloc_pages_exact_nid(int nid, size_t size, gfp_t gfp_mask);
 
+// 分配一个物理页面
 #define __get_free_page(gfp_mask) \
 		__get_free_pages((gfp_mask), 0)
 
 #define __get_dma_pages(gfp_mask, order) \
 		__get_free_pages((gfp_mask) | GFP_DMA, (order))
 
+// 页面释放函数
 extern void __free_pages(struct page *page, unsigned int order);
 extern void free_pages(unsigned long addr, unsigned int order);
 extern void free_unref_page(struct page *page);
@@ -554,6 +559,7 @@ extern void *page_frag_alloc(struct page_frag_cache *nc,
 extern void page_frag_free(void *addr);
 
 #define __free_page(page) __free_pages((page), 0)
+// 释放页面的核心函数
 #define free_page(addr) free_pages((addr), 0)
 
 void page_alloc_init(void);

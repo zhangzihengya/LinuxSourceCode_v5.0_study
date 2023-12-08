@@ -277,14 +277,19 @@ enum zone_watermarks {
 #define wmark_pages(z, i) (z->_watermark[i] + z->watermark_boost)
 
 struct per_cpu_pages {
+	// 链表中页面的数量
 	int count;		/* number of pages in the list */
+	// 高水位，当缓存的页面高于该水位时会回收页面到伙伴系统
 	int high;		/* high watermark, emptying needed */
+	// 一次回收到伙伴系统的页面数量
 	int batch;		/* chunk size for buddy add/remove */
 
 	/* Lists of pages, one per migrate type stored on the pcp-lists */
+	// 页面链表，分成多个迁移类型
 	struct list_head lists[MIGRATE_PCPTYPES];
 };
 
+// per_cpu_pages 数据结构里面有一个单页面的链表，里面暂时存放了一部分单个物理页面
 struct per_cpu_pageset {
 	struct per_cpu_pages pcp;
 #ifdef CONFIG_NUMA
@@ -390,6 +395,7 @@ struct zone {
 	// 指向内存节点
 	struct pglist_data	*zone_pgdat;
 	// 用于维护 Per-CPU 变量上的一系列页面，以减少自旋锁的争用
+	// per_cpu_pages 数据结构里面有一个单页面的链表，里面暂时存放了一部分单个物理页面
 	struct per_cpu_pageset __percpu *pageset;
 
 #ifndef CONFIG_SPARSEMEM
@@ -517,8 +523,8 @@ struct zone {
 
 	/* Zone statistics */
 	ZONE_PADDING(_pad3_)
-	// 内存管理区计数
-	// 与页面相关的统计计数
+	// 内存管理区计数，与页面相关的统计计数
+	// 包括空闲页面数量 NR_FREE_PAGES、不活跃的匿名页面数量 NR_ZONE_INACTIVE_ANON 等
 	atomic_long_t		vm_stat[NR_VM_ZONE_STAT_ITEMS];
 	atomic_long_t		vm_numa_stat[NR_VM_NUMA_STAT_ITEMS];
 } ____cacheline_internodealigned_in_smp;
@@ -610,8 +616,13 @@ enum {
  * This struct contains information about a zone in a zonelist. It is stored
  * here to avoid dereferences into large structures and lookups of tables
  */
+// 每一个 zoneref 数据结构描述一个 zone
 struct zoneref {
+	// zone 成员指向实际的 zone
 	struct zone *zone;	/* Pointer to actual zone */
+	// zone_idx 是一个编号，使用 zone_idx() 函数获取的编号
+	// 通常 0 表示最低的 zone，如 ZONE_DMA32
+	// 1 表示 ZONE_NORMAL，以此类推
 	int zone_idx;		/* zone_idx(zoneref->zone) */
 };
 
@@ -629,7 +640,10 @@ struct zoneref {
  * zonelist_zone_idx()	- Return the index of the zone for an entry
  * zonelist_node_idx()	- Return the index of the node for an entry
  */
+// 内核使用 zonelist 数据结构来管理一个内存节点的 zone
+// zonelist 是所有可用 zone 的链表，其中排在第一个的 zone 是页面分配器“最喜欢的”，也是首选，其他的 zone 是备选
 struct zonelist {
+	// 每一个 zoneref 数据结构描述一个 zone
 	struct zoneref _zonerefs[MAX_ZONES_PER_ZONELIST + 1];
 };
 
@@ -647,8 +661,12 @@ extern struct page *mem_map;
  * per-zone basis.
  */
 struct bootmem_data;
+// 内存节点的数据结构
 typedef struct pglist_data {
 	struct zone node_zones[MAX_NR_ZONES];
+	// 有两个 zonelist：
+	// 其中一个是 ZONELIST_FALLBACK，指向本地的zone，即包含备选的 zone
+	// 另一个是 ZONELIST_NOFALLBACK，用于 NUMA 系统，指向远端的内存结点的 zone
 	struct zonelist node_zonelists[MAX_ZONELISTS];
 	int nr_zones;
 #ifdef CONFIG_FLAT_NODE_MEM_MAP	/* means !SPARSEMEM */
@@ -1032,6 +1050,7 @@ static __always_inline struct zoneref *next_zones_zonelist(struct zoneref *z,
  * never NULL). This may happen either genuinely, or due to concurrent nodemask
  * update due to cpuset modification.
  */
+// 返回 zonelist 中第一个 zone 或者低于给定的 highest_zoneidx 的第一个 zone
 static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
 					enum zone_type highest_zoneidx,
 					nodemask_t *nodes)
@@ -1051,12 +1070,14 @@ static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
  * This iterator iterates though all zones at or below a given zone index and
  * within a given nodemask
  */
+// 遍历 zonelist 中所有的 zone 或者低于给定的 highest_zoneidx 的所有的 zone
 #define for_each_zone_zonelist_nodemask(zone, z, zlist, highidx, nodemask) \
 	for (z = first_zones_zonelist(zlist, highidx, nodemask), zone = zonelist_zone(z);	\
 		zone;							\
 		z = next_zones_zonelist(++z, highidx, nodemask),	\
 			zone = zonelist_zone(z))
 
+// 从给定的 zone 开始遍历 zonelist 中所有的 zone
 #define for_next_zone_zonelist_nodemask(zone, z, zlist, highidx, nodemask) \
 	for (zone = z->zone;	\
 		zone;							\
