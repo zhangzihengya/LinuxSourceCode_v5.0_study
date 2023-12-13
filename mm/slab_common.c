@@ -373,10 +373,12 @@ static struct kmem_cache *create_cache(const char *name,
 		useroffset = usersize = 0;
 
 	err = -ENOMEM;
+	// 分配一个 kmem_cache 数据结构
 	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL);
 	if (!s)
 		goto out;
 
+	// 进行填充
 	s->name = name;
 	s->size = s->object_size = object_size;
 	s->align = align;
@@ -388,10 +390,12 @@ static struct kmem_cache *create_cache(const char *name,
 	if (err)
 		goto out_free_cache;
 
+	// 创建 slab 缓存描述符
 	err = __kmem_cache_create(s, flags);
 	if (err)
 		goto out_free_cache;
 
+	// 把新创建的 slab 描述符添加到全局的链表 slab_caches 中
 	s->refcount = 1;
 	list_add(&s->list, &slab_caches);
 	memcg_link_cache(s);
@@ -434,6 +438,13 @@ out_free_cache:
  *
  * Return: a pointer to the cache on success, NULL on failure.
  */
+// name：slab 描述符的名称，它会显示在 /proc/slabinfo 中
+// size：缓冲对象的大小
+// align：缓冲对象需要对齐的字节数
+// flags：分配掩码
+// useroffset：Usercopy 区域的偏移量
+// usersize：Usersize 区域的大小
+// ctor：对象的构造函数
 struct kmem_cache *
 kmem_cache_create_usercopy(const char *name,
 		  unsigned int size, unsigned int align,
@@ -451,6 +462,7 @@ kmem_cache_create_usercopy(const char *name,
 
 	mutex_lock(&slab_mutex);
 
+	// 做必要的检查
 	err = kmem_cache_sanity_check(name, size);
 	if (err) {
 		goto out_unlock;
@@ -468,6 +480,7 @@ kmem_cache_create_usercopy(const char *name,
 	 * case, and we'll just provide them with a sanitized version of the
 	 * passed flags.
 	 */
+	// CACHE_CREATE_MASK 是用于约束创建 slab 描述符的标志位
 	flags &= CACHE_CREATE_MASK;
 
 	/* Fail closed on bad usersize of useroffset values. */
@@ -476,16 +489,19 @@ kmem_cache_create_usercopy(const char *name,
 		usersize = useroffset = 0;
 
 	if (!usersize)
+		// 查找是否有现成的 slab 描述符可以复用，若能找到，则直接跳转到 out_unlock 标签处
 		s = __kmem_cache_alias(name, size, align, flags, ctor);
 	if (s)
 		goto out_unlock;
 
+	// 重新分配一个缓冲区来存放 slab 描述符的名称
 	cache_name = kstrdup_const(name, GFP_KERNEL);
 	if (!cache_name) {
 		err = -ENOMEM;
 		goto out_unlock;
 	}
 
+	// 创建 slab 描述符
 	s = create_cache(cache_name, size,
 			 calculate_alignment(flags, align, size),
 			 flags, useroffset, usersize, ctor, NULL, NULL);
@@ -542,6 +558,12 @@ EXPORT_SYMBOL(kmem_cache_create_usercopy);
  * Return: a pointer to the cache on success, NULL on failure.
  */
 // 创建 slab 描述符
+// kmem_cache_create() 函数用于创建自己的缓存描述符；kmalloc() 函数用于创建通用的缓存
+// name：slab 描述符的名称
+// size：缓冲对象的大小
+// align：缓冲对象需要对齐的字节数
+// flags：分配掩码
+// ctor：对象的构造函数
 struct kmem_cache *
 kmem_cache_create(const char *name, unsigned int size, unsigned int align,
 		slab_flags_t flags, void (*ctor)(void *))

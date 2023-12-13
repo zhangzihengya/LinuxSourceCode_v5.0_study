@@ -95,7 +95,7 @@ static void unmap_region(struct mm_struct *mm,
  *								w: (no) no
  *								x: (yes) yes
  */
-// 页表项属性数组，
+// 页表项属性数组，通过查询该数组可以获得页表项的属性，数组中的每个成员代表一个属性的组合
 pgprot_t protection_map[16] __ro_after_init = {
 	__P000, __P001, __P010, __P011, __P100, __P101, __P110, __P111,
 	__S000, __S001, __S010, __S011, __S100, __S101, __S110, __S111
@@ -190,6 +190,7 @@ static struct vm_area_struct *remove_vma(struct vm_area_struct *vma)
 
 static int do_brk_flags(unsigned long addr, unsigned long request, unsigned long flags,
 		struct list_head *uf);
+// 宏展开后的函数名为 __do_sys_brk
 SYSCALL_DEFINE1(brk, unsigned long, brk)
 {
 	unsigned long retval;
@@ -201,9 +202,11 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 	bool downgraded = false;
 	LIST_HEAD(uf);
 
+	// 申请写者类型的读写信号量 mm->mmap_sem，因为后续要修改进程的地址空间
 	if (down_write_killable(&mm->mmap_sem))
 		return -EINTR;
 
+	// 进程的内存管理描述符里有一个 brk 成员，用于记录动态分配区的当前底部
 	origbrk = mm->brk;
 
 #ifdef CONFIG_COMPAT_BRK
@@ -217,6 +220,7 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 	else
 		min_brk = mm->end_data;
 #else
+	// 进程的内存管理描述符里有一个 start_brk 成员，用于记录动态分配区的起始地址
 	min_brk = mm->start_brk;
 #endif
 	if (brk < min_brk)
@@ -232,8 +236,11 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 			      mm->end_data, mm->start_data))
 		goto out;
 
+	// newbrk 表示 brk 要求的新边界地址，是用户进程要求分配内存的大小与当前动态分配区底部边界地址的和
 	newbrk = PAGE_ALIGN(brk);
+	// oldbrk 表示当前动态分配区的底部边界地址
 	oldbrk = PAGE_ALIGN(mm->brk);
+	// 判断是否要移动分配的边界地址
 	if (oldbrk == newbrk) {
 		mm->brk = brk;
 		goto success;
@@ -243,6 +250,7 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 	 * Always allow shrinking brk.
 	 * __do_munmap() may downgrade mmap_sem to read.
 	 */
+	// 如果新边界地址小于旧边界地址，那么表示进程请求释放空间，调用 do_munmap() 来释放这一部分空间的内存
 	if (brk <= mm->brk) {
 		int ret;
 
@@ -263,24 +271,31 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 	}
 
 	/* Check against existing mmap mappings. */
+	// find_vma() 以旧边界地址去查找的 VMA，以确定当前用户进程中是否已经有一块 VMA 和 star_addr 重叠
+	// 如果找到一块包含 star_addr 的 VMA，说明以旧边界地址开始的地址空间已经在使用，就不需要再寻找了
 	next = find_vma(mm, oldbrk);
 	if (next && newbrk + PAGE_SIZE > vm_start_gap(next))
 		goto out;
 
 	/* Ok, looks good - let it rip. */
+	// 若没找到一块已经存在的 VMA，那么可以调用 do_brk_flags() 函数继续分配 VMA
 	if (do_brk_flags(oldbrk, newbrk-oldbrk, 0, &uf) < 0)
 		goto out;
+	// 设置这次请求的 brk 到进程内存描述符 mm->brk 中，以便下一次调用 brk 时知道当前的 brk 地址
 	mm->brk = brk;
 
 success:
 	populate = newbrk > oldbrk && (mm->def_flags & VM_LOCKED) != 0;
+	// 释放 mm->mmap_sem 信号量
 	if (downgraded)
 		up_read(&mm->mmap_sem);
 	else
 		up_write(&mm->mmap_sem);
 	userfaultfd_unmap_complete(mm, &uf);
 	if (populate)
+		// 分配物理内存
 		mm_populate(oldbrk, newbrk - oldbrk);
+	//  返会这次请求的 brk 地址
 	return brk;
 
 out:
@@ -522,15 +537,19 @@ anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
 		anon_vma_interval_tree_insert(avc, &avc->anon_vma->rb_root);
 }
 
+// 为新 VMA 查找合适的插入位置（某个节点的子节点）
 static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 		unsigned long end, struct vm_area_struct **pprev,
 		struct rb_node ***rb_link, struct rb_node **rb_parent)
 {
 	struct rb_node **__rb_link, *__rb_parent, *rb_prev;
 
+	// 指向红黑树的根节点
 	__rb_link = &mm->mm_rb.rb_node;
 	rb_prev = __rb_parent = NULL;
 
+	// 遍历这棵红黑树来寻找合适的插入位置
+	// while 循环一直遍历下去，直到某个节点没有子节点为止
 	while (*__rb_link) {
 		struct vm_area_struct *vma_tmp;
 
@@ -550,8 +569,11 @@ static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 
 	*pprev = NULL;
 	if (rb_prev)
+		// rb_prev 指向待插入节点的前继节点，这里获取前继节点的结构体
 		*pprev = rb_entry(rb_prev, struct vm_area_struct, vm_rb);
+	// *rb_link 指向 __rb_parent->rb_right 或 __rb_parent->rb_left 指针本身的地址
 	*rb_link = __rb_link;
+	// 指向待插入节点的父节点
 	*rb_parent = __rb_parent;
 	return 0;
 }
@@ -636,6 +658,7 @@ __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	__vma_link_rb(mm, vma, rb_link, rb_parent);
 }
 
+// 将 VMA 插入链表和红黑树中
 static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 			struct vm_area_struct *prev, struct rb_node **rb_link,
 			struct rb_node *rb_parent)
@@ -647,7 +670,9 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 		i_mmap_lock_write(mapping);
 	}
 
+	// 将节点添加到红黑树和链表中
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
+	// 把 VMA 添加到文件的基数树上
 	__vma_link_file(vma);
 
 	if (mapping)
@@ -1132,6 +1157,9 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
  * instead of the right permissions of XXXX.
  */
 // 用于将一个新的 VMA 和附近到的 VMA 合并
+// 参数 addr 是新的 VMA 的起始地址
+// 如果新 VMA 属于一个文件映射，则参数 file 指向该文件的 file 数据结构
+// 参数 proff 指定文件映射的偏移量
 struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			struct vm_area_struct *prev, unsigned long addr,
 			unsigned long end, unsigned long vm_flags,
@@ -1147,9 +1175,11 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	 * We later require that vma->vm_flags == vm_flags,
 	 * so this tests vma->vm_flags & VM_SPECIAL, too.
 	 */
+	// VM_SPECIAL 指的是不可合并和不可锁定的多个 VMA
 	if (vm_flags & VM_SPECIAL)
 		return NULL;
 
+	// 如果新插入的节点有前继节点，那么 next 指向 prev->vm_next；否则，指向 mm->mmap 的第一个节点
 	if (prev)
 		next = prev->vm_next;
 	else
@@ -1166,6 +1196,8 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	/*
 	 * Can it merge with the predecessor?
 	 */
+	// 判断是否可以和前继节点合并
+	// can_vma_merge_after() 函数判断 prev 节点是否可以被合并
 	if (prev && prev->vm_end == addr &&
 			mpol_equal(vma_policy(prev), policy) &&
 			can_vma_merge_after(prev, vm_flags,
@@ -1183,6 +1215,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 				is_mergeable_anon_vma(prev->anon_vma,
 						      next->anon_vma, NULL)) {
 							/* cases 1, 6 */
+			// __vma_adjust() 用于实现合并
 			err = __vma_adjust(prev, prev->vm_start,
 					 next->vm_end, prev->vm_pgoff, NULL,
 					 prev);
@@ -1198,6 +1231,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	/*
 	 * Can this new request be merged in front of next?
 	 */
+	// 判断是否可以和后继节点合并
 	if (next && end == next->vm_start &&
 			mpol_equal(policy, vma_policy(next)) &&
 			can_vma_merge_before(next, vm_flags,
@@ -2226,18 +2260,24 @@ get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 EXPORT_SYMBOL(get_unmapped_area);
 
 /* Look up the first VMA which satisfies  addr < vm_end,  NULL if none. */
+// find_vma() 通过 addr 查找 mm->mm_rb 红黑树中的节点并找到最邻近的 VMA
+// 该函数寻址第一个包含 addr 或者  vma->vm_start 大于 addr 的 VMA，若没有找到这样的 VMA，则返回 NULL
+// 因为返回的 VMA 的首地址可能大于 addr，所以 addr 可能不包含在返回的 VMA 范围里
 struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 {
 	struct rb_node *rb_node;
 	struct vm_area_struct *vma;
 
 	/* Check the cache first. */
+	// vmacache_find() 判断 vmacache[] 中的 VMA 是否满足要求
 	vma = vmacache_find(mm, addr);
 	if (likely(vma))
 		return vma;
 
+	// 如果在 vmacache[] 中没有找到 VMA，那么遍历这个用户进程的 mm_rb 红黑树，这颗红黑树存放着该用户进程所有的 VMA
 	rb_node = mm->mm_rb.rb_node;
 
+	// 通过 while 循环查找一块满足上述要求的 VMA
 	while (rb_node) {
 		struct vm_area_struct *tmp;
 
@@ -2262,6 +2302,7 @@ EXPORT_SYMBOL(find_vma);
 /*
  * Same as find_vma, but also return a pointer to the previous VMA in *pprev.
  */
+// find_vma_prev() 函数的逻辑和 find_vma() 一样，但是返回 VMA 的前继成员 vma->vm_prev
 struct vm_area_struct *
 find_vma_prev(struct mm_struct *mm, unsigned long addr,
 			struct vm_area_struct **pprev)
@@ -3165,6 +3206,7 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 	struct vm_area_struct *prev;
 	struct rb_node **rb_link, *rb_parent;
 
+	// find_vma_links() 查找要插入的位置 
 	if (find_vma_links(mm, vma->vm_start, vma->vm_end,
 			   &prev, &rb_link, &rb_parent))
 		return -ENOMEM;
@@ -3184,11 +3226,13 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 	 * using the existing file pgoff checks and manipulations.
 	 * Similarly in do_mmap_pgoff and in do_brk.
 	 */
+	// vma_is_anonymous() 用于判断这个 VMA 是否为匿名映射的 VMA，并设置 vm_pgoff 成员
 	if (vma_is_anonymous(vma)) {
 		BUG_ON(vma->anon_vma);
 		vma->vm_pgoff = vma->vm_start >> PAGE_SHIFT;
 	}
 
+	// 将 VMA 插入链表和红黑树中
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 	return 0;
 }

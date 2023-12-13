@@ -528,6 +528,7 @@ static __always_inline void *kmalloc_large(size_t size, gfp_t flags)
  *	Try really hard to succeed the allocation but fail
  *	eventually.
  */
+// kmalloc() 函数用于创建通用的缓存，核心实现是 slab 机制
 static __always_inline void *kmalloc(size_t size, gfp_t flags)
 {
 	if (__builtin_constant_p(size)) {
@@ -537,6 +538,7 @@ static __always_inline void *kmalloc(size_t size, gfp_t flags)
 		if (size > KMALLOC_MAX_CACHE_SIZE)
 			return kmalloc_large(size, flags);
 #ifndef CONFIG_SLOB
+		// kmalloc_index() 函数可以用于查找使用的是哪个 slab 缓冲区
 		index = kmalloc_index(size);
 
 		if (!index)

@@ -115,10 +115,13 @@ struct page {
 #endif
 				};
 			};
+			// 指向这个 slab 分配器所属的 slab 描述符
 			struct kmem_cache *slab_cache; /* not slob */
 			/* Double-word boundary */
+			// 管理区
 			void *freelist;		/* first free object */
 			union {
+				// slab 分配器中第一个对象的地址
 				void *s_mem;	/* slab: first object */
 				unsigned long counters;		/* SLUB */
 				struct {			/* SLUB */
@@ -186,6 +189,9 @@ struct page {
 		 */
 		unsigned int page_type;
 
+		// 表示 slab 分配器中活跃对象的数量。
+		// 当为 0 时，表示这个 slab 分配器中没有活跃对象，可以销毁这个 slab 分配器。
+		// 所谓活跃对象就是指对象已经被迁移到对象缓冲池中
 		unsigned int active;		/* SLAB */
 		int units;			/* SLOB */
 	};
@@ -285,11 +291,13 @@ struct vm_userfaultfd_ctx {};
 struct vm_area_struct {
 	/* The first cache line has the info for VMA tree walking. */
 
+	// 指定 VMA 在进程地址空间的起始地址和结束地址
 	unsigned long vm_start;		/* Our start address within vm_mm. */
 	unsigned long vm_end;		/* The first byte after our end address
 					   within vm_mm. */
 
 	/* linked list of VM areas per task, sorted by address */
+	// 进程的 VMA 都连接成一个链表
 	struct vm_area_struct *vm_next, *vm_prev;
 
 	// VMA 作为一个节点加入红黑树中，每个进程的 mm_struct 数据结构中都有这样一颗红黑树 mm->mm_rb
@@ -309,7 +317,7 @@ struct vm_area_struct {
 	struct mm_struct *vm_mm;	/* The address space we belong to. */
 	// VMA 的访问权限，保存把 VMA 属性标志位转换成处理器相关的页表项的属性，这和具体架构有关
 	pgprot_t vm_page_prot;		/* Access permissions of this VMA. */
-	// 用于描述 VMA 的一组标志位
+	// 用于描述 VMA 的一组标志位，用于描述 VMA 的属性
 	unsigned long vm_flags;		/* Flags, see mm.h. */
 
 	/*
@@ -327,12 +335,13 @@ struct vm_area_struct {
 	 * can only be in the i_mmap tree.  An anonymous MAP_PRIVATE, stack
 	 * or brk vma (with NULL file) can only be in an anon_vma list.
 	 */
-	// 用于管理 RMAP
+	// 用于管理反向映射（RMAP）
 	struct list_head anon_vma_chain; /* Serialized by mmap_sem &
 					  * page_table_lock */
 	struct anon_vma *anon_vma;	/* Serialized by page_table_lock */
 
 	/* Function pointers to deal with this struct. */
+	// 指向许多方法的集合，这些方法用于在 VMA 中执行各种操作，通常用于文件映射
 	const struct vm_operations_struct *vm_ops;
 
 	/* Information about our backing store: */
@@ -370,7 +379,7 @@ struct mm_struct {
 	struct {
 		// 进程里所有的 VMA 将形成一个单链表，mmap 是这个单链表的头
 		struct vm_area_struct *mmap;		/* list of VMAs */
-		// VMA 红黑树的根节点
+		// VMA 红黑树的根节点，每个进程在 VMA 中都有一颗红黑树
 		struct rb_root mm_rb;
 		u64 vmacache_seqnum;                   /* per-thread vmacache */
 #ifdef CONFIG_MMU
@@ -401,6 +410,8 @@ struct mm_struct {
 		 * @mm_count (which may then free the &struct mm_struct if
 		 * @mm_count also drops to 0).
 		 */
+		// 记录正在使用该进程地址空间的进程数目
+		// 如果两个线程共享该地址空间，那么 mm_users 的值等于 2
 		atomic_t mm_users;
 
 		/**
@@ -410,6 +421,7 @@ struct mm_struct {
 		 * Use mmgrab()/mmdrop() to modify. When this drops to 0, the
 		 * &struct mm_struct is freed.
 		 */
+		// mm_struct 结构体的主引用计数
 		atomic_t mm_count;
 
 #ifdef CONFIG_MMU
