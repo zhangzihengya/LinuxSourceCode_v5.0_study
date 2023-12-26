@@ -2215,6 +2215,7 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 }
 #endif
 
+// 参数 flags 为 MAP_FIXED，表示使用指定的虚拟地址对应的空间
 unsigned long
 get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 		unsigned long pgoff, unsigned long flags)
@@ -3021,6 +3022,11 @@ out:
  *  anonymous maps.  eventually we may be able to do some
  *  brk-specific accounting here.
  */
+// 分配 VAM
+// addr: 旧的边界地址
+// len: 要申请内存的大小
+// flags: 分配时传递的标志位
+// uf: 内部临时用的链表
 static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long flags, struct list_head *uf)
 {
 	struct mm_struct *mm = current->mm;
@@ -3032,8 +3038,11 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	/* Until we need other flags, refuse anything except VM_EXEC. */
 	if ((flags & (~VM_EXEC)) != 0)
 		return -EINVAL;
+	// 通常传递的 flags 参数为 0，这里设置为 VM_DATA_DEFAULT_FLAGS（VMA 的属性为 VM_READ 和 VM_WRITE）
 	flags |= VM_DATA_DEFAULT_FLAGS | VM_ACCOUNT | mm->def_flags;
 
+	// get_unmapped_area() 函数在进程地址空间中寻找一个可以使用的线性地址区间
+	// 返回一段没有映射过的空间的起始地址
 	error = get_unmapped_area(NULL, addr, len, 0, MAP_FIXED);
 	if (offset_in_page(error))
 		return error;
@@ -3045,6 +3054,10 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	/*
 	 * Clear old maps.  this also does some error checking for us
 	 */
+	// find_vma_links 函数遍历用户进程红黑树中的 VMA，然后根据 addr 来查找最合适插入红黑树的节点，最终 rb_link 指针指向
+	// 最合适节点的 rb_left 或 rb_right 指针本身的地址
+	// 若返回 0，表示寻找到最合适插入的节点
+	// 若返回 -ENOMEM，表示和现有的 VMA 重叠，会调用 do_munmap() 函数来释放这段重叠的空间
 	while (find_vma_links(mm, addr, addr + len, &prev, &rb_link,
 			      &rb_parent)) {
 		if (do_munmap(mm, addr, len, uf))
@@ -3062,6 +3075,8 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 		return -ENOMEM;
 
 	/* Can we just expand an old private anonymous mapping? */
+	// vma_merge() 函数检查有没有办法合并 addr 附近的 VMA
+	// 如果没办法合并，那么只能新创建一个 VMA，VMA的地址空间就是 [addr,addr+len]
 	vma = vma_merge(mm, prev, addr, addr + len, flags,
 			NULL, NULL, pgoff, NULL, NULL_VM_UFFD_CTX);
 	if (vma)
@@ -3070,6 +3085,7 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	/*
 	 * create a vma struct for an anonymous mapping
 	 */
+	// 若 vma_merge() 函数没办法和现有的 VMA 进行合并，就新建一个 VMA
 	vma = vm_area_alloc(mm);
 	if (!vma) {
 		vm_unacct_memory(len >> PAGE_SHIFT);
@@ -3081,7 +3097,9 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	vma->vm_end = addr + len;
 	vma->vm_pgoff = pgoff;
 	vma->vm_flags = flags;
+	// vm_get_page_prot() 函数通过 flags 值来获取 PTE 的相关属性
 	vma->vm_page_prot = vm_get_page_prot(flags);
+	// 将新创建的 VMA 添加到 mm->mmap 链表和红黑树中
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 out:
 	perf_event_mmap(vma);

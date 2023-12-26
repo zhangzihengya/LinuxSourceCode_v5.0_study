@@ -52,13 +52,16 @@ void pmd_clear_bad(pmd_t *pmd)
  * used to be done in the caller, but sparc needs minor faults to
  * force that call on sun4c so we changed this macro slightly
  */
+// 在 Linux 4.7 内核之前，该函数采用内核默认的实现函数
 int ptep_set_access_flags(struct vm_area_struct *vma,
 			  unsigned long address, pte_t *ptep,
 			  pte_t entry, int dirty)
 {
 	int changed = !pte_same(*ptep, entry);
 	if (changed) {
+		// 把新的 PTE 设置到硬件页表中
 		set_pte_at(vma->vm_mm, address, ptep, entry);
+		// 然后刷新这个页面对应的 TLB
 		flush_tlb_fix_spurious_fault(vma, address);
 	}
 	return changed;

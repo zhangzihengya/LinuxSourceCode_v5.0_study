@@ -7,7 +7,7 @@
 /*
  * Definitions unique to the original Linux SLAB allocator.
  */
-// kmem_cache数据结构中的核心成员，每个 slab 描述符都用一个 kmem_cache 数据结构来抽象描述
+// kmem_cache数据结构是 slab 分配器中的核心成员，每个 slab 描述符都用一个 kmem_cache 数据结构来抽象描述
 struct kmem_cache {
 	// Per-cpu 变量的 array_cache 数据结构，每个CPU一个，表示本地 CPU 的对象缓冲池
 	struct array_cache __percpu *cpu_cache;

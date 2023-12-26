@@ -367,20 +367,29 @@ extern pgprot_t protection_map[16];
  *
  * pgoff should be used in favour of virtual_address, if possible.
  */
+// Linux 内核为缺页异常处理定义的一个数据结构的 vm_fault
+// 它常常用于填充相应的参数并且传递给进程地址空间的fault()回调函数中
 struct vm_fault {
 	struct vm_area_struct *vma;	/* Target VMA */
+	// 与进程内存描述符相关的标志位
 	unsigned int flags;		/* FAULT_FLAG_xxx flags */
+	// 分配掩码，用于页面分配器分配页面时请求集合
 	gfp_t gfp_mask;			/* gfp mask to be used for allocations */
 	pgoff_t pgoff;			/* Logical page offset based on vma */
 	unsigned long address;		/* Faulting virtual address */
+	// 缺页异常地址对应的 PMD 页表项
 	pmd_t *pmd;			/* Pointer to pmd entry matching
 					 * the 'address' */
+	// 缺页异常地址对应的 PUD 页表项
 	pud_t *pud;			/* Pointer to pud entry matching
 					 * the 'address'
 					 */
+	// 发生缺页异常时，address 对应的 PTE 的内容
 	pte_t orig_pte;			/* Value of PTE at the time of fault */
 
+	// 处理写时复制时用的页面
 	struct page *cow_page;		/* Page handler may use for COW fault */
+	// cow_page 对应的 mem_cgroup
 	struct mem_cgroup *memcg;	/* Cgroup cow_page belongs to */
 	struct page *page;		/* ->fault handlers should return a
 					 * page here, unless VM_FAULT_NOPAGE
@@ -388,10 +397,12 @@ struct vm_fault {
 					 * VM_FAULT_ERROR).
 					 */
 	/* These three entries are valid only while holding ptl lock */
+	// 缺页异常地址对应的 PTE
 	pte_t *pte;			/* Pointer to pte entry matching
 					 * the 'address'. NULL if the page
 					 * table hasn't been allocated.
 					 */
+	// 用于保护页表的自旋锁
 	spinlock_t *ptl;		/* Page table lock.
 					 * Protects pte page table if 'pte'
 					 * is not NULL, otherwise pmd.
@@ -1400,6 +1411,7 @@ struct zap_details {
 
 struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 			     pte_t pte, bool with_public_device);
+// vm_normal_page() 函数把页面分为两类，一类是普通页面，另一类是特殊页面
 #define vm_normal_page(vma, addr, pte) _vm_normal_page(vma, addr, pte, false)
 
 struct page *vm_normal_page_pmd(struct vm_area_struct *vma, unsigned long addr,

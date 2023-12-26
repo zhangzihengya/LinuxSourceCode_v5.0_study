@@ -1408,6 +1408,7 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 		size += PAGE_SIZE;
 
 	// 分配 vmalloc 区域，在 vmalloc 区域中查找一块大小合适的并且没有使用的空间，这段空间称为缝隙
+	// 找到新的区块缝隙后，调用__insert_vmap_area()函数把这个缝隙注册到红黑树中
 	va = alloc_vmap_area(size, align, start, end, node, gfp_mask);
 	if (IS_ERR(va)) {
 		kfree(area);

@@ -50,10 +50,14 @@
 #include <acpi/ghes.h>
 
 struct fault_info {
+	// 定义一个函数指针，用于修复异常状态的函数指针
 	int	(*fn)(unsigned long addr, unsigned int esr,
 		      struct pt_regs *regs);
+	// 处理失败时 Linux 内核要发送的信号类型
 	int	sig;
+	// 处理失败时 Linux 内核要发送的信号编码
 	int	code;
+	// 这条异常状态的名称
 	const char *name;
 };
 
@@ -217,6 +221,9 @@ void show_pte(unsigned long addr)
  *
  * Returns whether or not the PTE actually changed.
  */
+// 相比于内核默认的实现函数：
+// 1. 采用 cmpxchg() 原子操作函数来修改 PTE
+// 2. 对PTE_RDONLY位做必要的反转，确保不会覆盖硬件脏状态管理机制修改后的 PTE_RDONLY 位。
 int ptep_set_access_flags(struct vm_area_struct *vma,
 			  unsigned long address, pte_t *ptep,
 			  pte_t entry, int dirty)
@@ -400,10 +407,13 @@ static vm_fault_t __do_page_fault(struct mm_struct *mm, unsigned long addr,
 	struct vm_area_struct *vma;
 	vm_fault_t fault;
 
+	// 通过失效地址（addr）来查找 VMA
 	vma = find_vma(mm, addr);
 	fault = VM_FAULT_BADMAP;
 	if (unlikely(!vma))
 		goto out;
+	// 特殊情况：若找到 VMA 的起始地址大于 addr，那么需要跳转到 check_stack 标签处，判断是否可以把 VMA 的地址扩展到 addr
+	// 如果可以扩展，说明这是一个好的 VMA；否则，这是一个有问题的 VMA，返回 VM_FAULT_BADMAP
 	if (unlikely(vma->vm_start > addr))
 		goto check_stack;
 
@@ -416,12 +426,14 @@ good_area:
 	 * Check that the permissions on the VMA allow for the fault which
 	 * occurred.
 	 */
+	// 判断 VMA 的属性
 	if (!(vma->vm_flags & vm_flags)) {
+		// 若这个 VMA 的属性（vma->vm_flags）不具有可写属性
 		fault = VM_FAULT_BADACCESS;
 		goto out;
 	}
 
-	// 重新建立物理页面到 VMA 的映射关系
+	// 缺页中断的核心处理函数，重新建立物理页面到 VMA 的映射关系
 	return handle_mm_fault(vma, addr & PAGE_MASK, mm_flags);
 
 check_stack:
@@ -437,6 +449,10 @@ static bool is_el0_instruction_abort(unsigned int esr)
 }
 
 // 缺页异常处理的核心函数
+// 处理与页表访问或者权限相关的异常错误
+// addr: 表示异常发生时的虚拟地址，由 FAR 提供
+// esr: 表示异常发生时的异常状态，由 ESR 提供
+// regs：异常发生时的 pt_regs
 static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 				   struct pt_regs *regs)
 {
@@ -457,12 +473,17 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	 * If we're in an interrupt or have no user context, we must not take
 	 * the fault.
 	 */
+	// 检查异常发生时，内核是否正在执行一些关键路径中的代码
+	// 如果缺页异常发生在中断上下文或者内核线程（mm字段总为NULL）中，那么直接跳到 no_context 标签处的__do_kernel_fault()
 	if (faulthandler_disabled() || !mm)
 		goto no_context;
 
+	// user_mode() 通过 PSTATE 寄存器来判断异常是否发生在 EL0
 	if (user_mode(regs))
+		// 若在用户模式下发生异常，设置 FAULT_FLAG_USER 标志位
 		mm_flags |= FAULT_FLAG_USER;
 
+	// is_el0_instruction_abort() 函数读取 ESR 的 EC 字段来判断异常是否为低异常等级的指令异常
 	if (is_el0_instruction_abort(esr)) {
 		vm_flags = VM_EXEC;
 	} else if ((esr & ESR_ELx_WNR) && !(esr & ESR_ELx_CM)) {
@@ -470,16 +491,20 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 		mm_flags |= FAULT_FLAG_WRITE;
 	}
 
+	// is_ttbr0_addr() 判断异常地址是否发生在用户空间
+	// is_el1_permission_fault() 权限问题是否发生在 EL1 中
 	if (is_ttbr0_addr(addr) && is_el1_permission_fault(addr, esr, regs)) {
 		/* regs->orig_addr_limit may be 0 if we entered from EL0 */
 		if (regs->orig_addr_limit == KERNEL_DS)
 			die_kernel_fault("access to user memory with fs=KERNEL_DS",
 					 addr, esr, regs);
 
+		// 判断是否是 EL1 的指令异常
 		if (is_el1_instruction_abort(esr))
 			die_kernel_fault("execution of user memory",
 					 addr, esr, regs);
 
+		// 判断异常表中是否有合适的处理函数
 		if (!search_exception_tables(regs->pc))
 			die_kernel_fault("access to user memory outside uaccess routines",
 					 addr, esr, regs);
@@ -492,6 +517,8 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	 * validly references user space from well defined areas of the code,
 	 * we can bug out early if this is from code which shouldn't.
 	 */
+	// 上述判断完成之后，可以断定缺页异常没有发生在中断上下文、内核线程，以及一些特殊情况下
+	// 接下来，要检查由进程地址空间而引发的缺页异常
 	if (!down_read_trylock(&mm->mmap_sem)) {
 		if (!user_mode(regs) && !search_exception_tables(regs->pc))
 			goto no_context;
@@ -509,9 +536,11 @@ retry:
 #endif
 	}
 
+	// 进行进一步的处理，返回 vm_fault_t 类型的处理结果
 	fault = __do_page_fault(mm, addr, mm_flags, vm_flags, tsk);
 	major |= fault & VM_FAULT_MAJOR;
 
+	// 处理需要重试的情况
 	if (fault & VM_FAULT_RETRY) {
 		/*
 		 * If we need to retry but a fatal signal is pending,
@@ -540,6 +569,7 @@ retry:
 	/*
 	 * Handle the "normal" (no error) case first.
 	 */
+	// __do_page_fault() 函数返回正确的情况
 	if (likely(!(fault & (VM_FAULT_ERROR | VM_FAULT_BADMAP |
 			      VM_FAULT_BADACCESS)))) {
 		/*
@@ -565,9 +595,11 @@ retry:
 	 * If we are in kernel mode at this point, we have no context to
 	 * handle this fault with.
 	 */
+	// __do_page_fault() 函数返回错误的情况
 	if (!user_mode(regs))
 		goto no_context;
 
+	// 处理 VM_FAULT_OOM 错误的情况
 	if (fault & VM_FAULT_OOM) {
 		/*
 		 * We ran out of memory, call the OOM killer, and return to
@@ -580,6 +612,7 @@ retry:
 
 	inf = esr_to_fault_info(esr);
 	set_thread_esr(addr, esr);
+	// 处理 VM_FAULT_SIGBUS 错误情况
 	if (fault & VM_FAULT_SIGBUS) {
 		/*
 		 * We had some memory, but were unable to successfully fix up
@@ -668,6 +701,11 @@ static int do_sea(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 	return 0;
 }
 
+// 异常向量表
+// do_translation_fault: 处理与页表转换相关的异常错误
+// do_page_fault: 处理与页表访问或者权限相关的异常错误
+// do_alignment_fault: 处理与对齐相关的异常错误
+// do_bad: 处理与未知的错误或者硬件相关的错误，如 TLB 冲突等
 static const struct fault_info fault_info[] = {
 	{ do_bad,		SIGKILL, SI_KERNEL,	"ttbr address size fault"	},
 	{ do_bad,		SIGKILL, SI_KERNEL,	"level 1 address size fault"	},
@@ -743,8 +781,10 @@ int handle_guest_sea(phys_addr_t addr, unsigned int esr)
 asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 					 struct pt_regs *regs)
 {
+	// esr_to_fault_info() 根据 DFSC 字段的值来查询 fault_info 表
 	const struct fault_info *inf = esr_to_fault_info(esr);
 
+	// 跳转到具体的异常处理函数中
 	if (!inf->fn(addr, esr, regs))
 		return;
 
@@ -754,6 +794,7 @@ asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 		show_pte(addr);
 	}
 
+	// 如果在 fault_info 表中没有找到对应的异常，那么调用 arm64_notify_die() 来输出错误信息
 	arm64_notify_die(inf->name, regs,
 			 inf->sig, inf->code, (void __user *)addr, esr);
 }
