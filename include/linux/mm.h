@@ -1170,6 +1170,7 @@ static inline void page_kasan_tag_set(struct page *page, u8 tag) { }
 static inline void page_kasan_tag_reset(struct page *page) { }
 #endif
 
+// 获得某个页面所属的 zone
 static inline struct zone *page_zone(const struct page *page)
 {
 	return &NODE_DATA(page_to_nid(page))->node_zones[page_zonenum(page)];
@@ -1193,6 +1194,7 @@ static inline unsigned long page_to_section(const struct page *page)
 }
 #endif
 
+// 把 zone 编号设置到 page->flags 中
 static inline void set_page_zone(struct page *page, enum zone_type zone)
 {
 	page->flags &= ~(ZONES_MASK << ZONES_PGSHIFT);
