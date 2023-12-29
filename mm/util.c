@@ -457,6 +457,7 @@ static inline void *__page_rmapping(struct page *page)
 }
 
 /* Neutral page->mapping pointer to address_space or anon_vma or other */
+// 用于返回 mapping 成员，但是会清除低 2 位
 void *page_rmapping(struct page *page)
 {
 	page = compound_head(page);
@@ -467,6 +468,7 @@ void *page_rmapping(struct page *page)
  * Return true if this page is mapped into pagetables.
  * For compound page it returns true if any subpage of compound page is mapped.
  */
+// 用于判断该页面是否映射到用户 PTE，判断条件是判断 _mapcount 是否大于或等于 0
 bool page_mapped(struct page *page)
 {
 	int i;
@@ -497,6 +499,7 @@ struct anon_vma *page_anon_vma(struct page *page)
 	return __page_rmapping(page);
 }
 
+// 用于返回 page 数据结构中 mapping 成员指向的地址空间，即 address_space 数据结构
 struct address_space *page_mapping(struct page *page)
 {
 	struct address_space *mapping;

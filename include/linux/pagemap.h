@@ -476,6 +476,7 @@ static inline int trylock_page(struct page *page)
 /*
  * lock_page may only be called if we have the page's inode pinned.
  */
+// 用于申请页锁，如果页锁被其他进程占用了，那么它会进入不可中断的睡眠状态
 static inline void lock_page(struct page *page)
 {
 	might_sleep();

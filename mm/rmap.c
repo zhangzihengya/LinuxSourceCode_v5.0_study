@@ -172,6 +172,7 @@ static void anon_vma_chain_link(struct vm_area_struct *vma,
  *
  * This must be called with the mmap_sem held for reading.
  */
+// 该函数为 RMAP 做准备，比如新建一个 anon_vma 数据结构，并且添加到 VMA 中
 int __anon_vma_prepare(struct vm_area_struct *vma)
 {
 	struct mm_struct *mm = vma->vm_mm;
@@ -180,24 +181,33 @@ int __anon_vma_prepare(struct vm_area_struct *vma)
 
 	might_sleep();
 
+	// 分配一个 anon_vma_chain 数据结构
 	avc = anon_vma_chain_alloc(GFP_KERNEL);
 	if (!avc)
 		goto out_enomem;
 
+	// 检查是否可以复用当前 VMA 的 near_vma 和 prev_vma 的 anon_vma
 	anon_vma = find_mergeable_anon_vma(vma);
 	allocated = NULL;
 	if (!anon_vma) {
+		// 如果相邻的 VMA 无法复用 anon_vma，那么调用 anon_vma_alloc()，重新分配一个 anon_vma 数据结构，
+		// 并对其中的重要成员做必要的初始化
 		anon_vma = anon_vma_alloc();
 		if (unlikely(!anon_vma))
 			goto out_enomem_free_avc;
 		allocated = anon_vma;
 	}
 
+	// 申请一个写者类型的信号量
 	anon_vma_lock_write(anon_vma);
 	/* page_table_lock to protect against threads */
+	// 申请一个 mm->page_table_lock 的自旋锁
 	spin_lock(&mm->page_table_lock);
 	if (likely(!vma->anon_vma)) {
+		// 把 vma->anon_vma 指向刚才分配的 anon_vma
 		vma->anon_vma = anon_vma;
+		// 把刚才分配的 anon_vma_chain 添加到 VMA 的 anon_vma_chain 链表中。
+		// 另外，把 anon_vma_chain 添加到 anon_vma->rb_root 红黑树中
 		anon_vma_chain_link(vma, avc, anon_vma);
 		/* vma reference or self-parent link for new root */
 		anon_vma->degree++;
@@ -312,6 +322,9 @@ int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
  * the corresponding VMA in the parent process is attached to.
  * Returns 0 on success, non-zero on failure.
  */
+// 主要作用是把 VMA 绑定到子进程的 anon_vma 数据结构中
+// 参数 vma 表示子进程的 VMA
+// 参数 pvma 表示父进程的 VMA
 int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 {
 	struct anon_vma_chain *avc;
@@ -319,6 +332,7 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	int error;
 
 	/* Don't bother if the parent process has no anon_vma here. */
+	// 若父进程没有 anon_vma 数据结构，就不需要绑定了
 	if (!pvma->anon_vma)
 		return 0;
 
@@ -329,15 +343,18 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	 * First, attach the new VMA to the parent VMA's anon_vmas,
 	 * so rmap can find non-COWed pages in child processes.
 	 */
+	// anon_vma_clone() 函数把子进程的 VMA 绑定到父进程的 VMA 对应的 anon_vma 数据结构中
 	error = anon_vma_clone(vma, pvma);
 	if (error)
 		return error;
 
 	/* An existing anon_vma has been reused, all done then. */
+	// 若子进程的 VMA 已经创建了 anon_vma 数据结构，说明绑定已经完成
 	if (vma->anon_vma)
 		return 0;
 
 	/* Then add our own anon_vma. */
+	// 分配属于子进程的 anon_vma 和 anon_vma_chain
 	anon_vma = anon_vma_alloc();
 	if (!anon_vma)
 		goto out_error;
@@ -356,10 +373,13 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	 * process it belongs to. The root anon_vma needs to be pinned until
 	 * this anon_vma is freed, because the lock lives in the root.
 	 */
+	// get_anon_vma() 增加 anon_vma 数据结构中的 refcount，注意这里增加的是父进程的 anon_vma 中的引用计数
 	get_anon_vma(anon_vma->root);
 	/* Mark this anon_vma as the one where our new (COWed) pages go. */
 	vma->anon_vma = anon_vma;
 	anon_vma_lock_write(anon_vma);
+	// 把 anon_vma_chain 挂入子进程的 vma->anon_vma_chain 链表中，同时把 anon_vma_chain 加入子进程的 anon_vma->rb_root 红黑树中
+	// 至此，子进程的 VMA 和父进程的 VMA 之间的纽带建立成功
 	anon_vma_chain_link(vma, avc, anon_vma);
 	anon_vma->parent->degree++;
 	anon_vma_unlock_write(anon_vma);
@@ -1043,7 +1063,10 @@ static void __page_set_anon_rmap(struct page *page,
 		anon_vma = anon_vma->root;
 
 	anon_vma = (void *) anon_vma + PAGE_MAPPING_ANON;
+	// page 数据结构中的 mapping 成员用于指定页面所在的地址空间
 	page->mapping = (struct address_space *) anon_vma;
+	// linear_page_index() 函数计算当前地址（address）在 VMA 中的第几个页面，
+	// 然后把 offset 值设置到 page->index 中
 	page->index = linear_page_index(vma, address);
 }
 
@@ -1149,16 +1172,19 @@ void do_page_add_anon_rmap(struct page *page,
  * This means the inc-and-test can be bypassed.
  * Page does not have to be locked.
  */
+// 把匿名页面添加到 RMAP 系统中
 void page_add_new_anon_rmap(struct page *page,
 	struct vm_area_struct *vma, unsigned long address, bool compound)
 {
 	int nr = compound ? hpage_nr_pages(page) : 1;
 
 	VM_BUG_ON_VMA(address < vma->vm_start || address >= vma->vm_end, vma);
+	// 设置 page 的标志位 PG_swapbacked，表示这个页面可以交换到磁盘
 	__SetPageSwapBacked(page);
 	if (compound) {
 		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
 		/* increment count (starts at -1) */
+		// 设置 page 的 _mapcount 为 0，_mapcount 的初始值为 -1
 		atomic_set(compound_mapcount_ptr(page), 0);
 		__inc_node_page_state(page, NR_ANON_THPS);
 	} else {
@@ -1167,7 +1193,9 @@ void page_add_new_anon_rmap(struct page *page,
 		/* increment count (starts at -1) */
 		atomic_set(&page->_mapcount, 0);
 	}
+	// 增加页面所在的 zone 的匿名页面的计数
 	__mod_node_page_state(page_pgdat(page), NR_ANON_MAPPED, nr);
+	// 设置这个页面为匿名映射
 	__page_set_anon_rmap(page, vma, address, 1);
 }
 
@@ -1695,6 +1723,7 @@ static int page_mapcount_is_zero(struct page *page)
  *
  * If unmap is successful, return true. Otherwise, false.
  */
+// RMAP 的核心函数，用于断开一个页面的所有映射
 bool try_to_unmap(struct page *page, enum ttu_flags flags)
 {
 	struct rmap_walk_control rwc = {
@@ -1721,6 +1750,9 @@ bool try_to_unmap(struct page *page, enum ttu_flags flags)
 	else
 		rmap_walk(page, &rwc);
 
+	// 判断 page 的 _mapcount:
+	// 若 _mapcount 为 -1，说明所有映射到这个页面的用户 PTE 都已经解除完毕，因此返回 true
+	// 否则返回 true
 	return !page_mapcount(page) ? true : false;
 }
 
@@ -1799,6 +1831,10 @@ static struct anon_vma *rmap_walk_anon_lock(struct page *page,
  * vm_flags for that VMA.  That should be OK, because that vma shouldn't be
  * LOCKED.
  */
+// 断开一个匿名页面的所有映射
+// 参数 page 表示需要解除映射的物理页面的 page 数据结构
+// 参数 rwc 表示 rmap_walk_control 数据结构
+// 参数 locked 表示是否已经加锁
 static void rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc,
 		bool locked)
 {
@@ -1807,10 +1843,14 @@ static void rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc,
 	struct anon_vma_chain *avc;
 
 	if (locked) {
+		// 若 locked 已经加锁
+		// 调用 page_anon_vma() 函数来获取 anon_vma 数据结构
 		anon_vma = page_anon_vma(page);
 		/* anon_vma disappear under us? */
 		VM_BUG_ON_PAGE(!anon_vma, page);
 	} else {
+		// 若 locked 没有加锁
+		// rmap_walk_anon_lock() 函数除了要取回 anon_vma 数据结构外，还会申请一个锁
 		anon_vma = rmap_walk_anon_lock(page, rwc);
 	}
 	if (!anon_vma)
@@ -1818,6 +1858,8 @@ static void rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc,
 
 	pgoff_start = page_to_pgoff(page);
 	pgoff_end = pgoff_start + hpage_nr_pages(page) - 1;
+	// 遍历 anon_vma->rb_root 红黑树中的 anon_vma_chain，从 anon_vma_chain 中可以
+	// 得到相应的 VMA，然后调用 rmap_one() 来解除用户 PTE
 	anon_vma_interval_tree_foreach(avc, &anon_vma->rb_root,
 			pgoff_start, pgoff_end) {
 		struct vm_area_struct *vma = avc->vma;

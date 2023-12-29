@@ -460,6 +460,7 @@ void free_task(struct task_struct *tsk)
 EXPORT_SYMBOL(free_task);
 
 #ifdef CONFIG_MMU
+// 复制父进程的地址空间
 static __latent_entropy int dup_mmap(struct mm_struct *mm,
 					struct mm_struct *oldmm)
 {
@@ -500,6 +501,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 		goto out;
 
 	prev = NULL;
+	// 遍历父进程所有的 VMA
 	for (mpnt = oldmm->mmap; mpnt; mpnt = mpnt->vm_next) {
 		struct file *file;
 
@@ -523,6 +525,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 				goto fail_nomem;
 			charge = len;
 		}
+		// 新建一个临时用的 VMA 数据结构 tmp，复制父进程 VMA 数据结构的内容到 tmp
 		tmp = vm_area_dup(mpnt);
 		if (!tmp)
 			goto fail_nomem;
@@ -538,6 +541,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 			tmp->anon_vma = NULL;
 			if (anon_vma_prepare(tmp))
 				goto fail_nomem_anon_vma_fork;
+		// anon_vma_fork() 为子进程创建相应的 anon_vma 数据结构
 		} else if (anon_vma_fork(tmp, mpnt))
 			goto fail_nomem_anon_vma_fork;
 		tmp->vm_flags &= ~(VM_LOCKED | VM_LOCKONFAULT);
@@ -577,12 +581,14 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 		tmp->vm_prev = prev;
 		prev = tmp;
 
+		// 把 tmp 添加到子进程的红黑树中
 		__vma_link_rb(mm, tmp, rb_link, rb_parent);
 		rb_link = &tmp->vm_rb.rb_right;
 		rb_parent = &tmp->vm_rb;
 
 		mm->map_count++;
 		if (!(tmp->vm_flags & VM_WIPEONFORK))
+			// 复制父进程的 PTE 到子进程页表中
 			retval = copy_page_range(mm, oldmm, mpnt);
 
 		if (tmp->vm_ops && tmp->vm_ops->open)

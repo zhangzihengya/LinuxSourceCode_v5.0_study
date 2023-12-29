@@ -978,6 +978,7 @@ static inline bool is_pci_p2pdma_page(const struct page *page)
 }
 #endif /* CONFIG_DEV_PAGEMAP_OPS */
 
+// 增加页面引用计数，即 _refcount 加 1
 static inline void get_page(struct page *page)
 {
 	page = compound_head(page);
@@ -989,6 +990,7 @@ static inline void get_page(struct page *page)
 	page_ref_inc(page);
 }
 
+// _refcount 减 1，若 _refcount 减 1 后等于 0，那么会释放该页面
 static inline void put_page(struct page *page)
 {
 	page = compound_head(page);

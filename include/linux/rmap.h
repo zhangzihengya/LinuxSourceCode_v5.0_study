@@ -26,8 +26,11 @@
  * the anon_vma object itself: we're guaranteed no page can be
  * pointing to this anon_vma once its vma list is empty.
  */
+// 主要用于连接物理页面的 page 数据结构和 VMA 的 vm_area_struct 数据结构
 struct anon_vma {
+	// 指向 anon_vma 数据结构的根节点
 	struct anon_vma *root;		/* Root of this anon_vma tree */
+	// 保护 anon_vma 数据结构中链表的读写信号量
 	struct rw_semaphore rwsem;	/* W: modification, R: walking the list */
 	/*
 	 * The refcount is taken on an anon_vma when there is no
@@ -36,6 +39,7 @@ struct anon_vma {
 	 * the reference is responsible for clearing up the
 	 * anon_vma if they are the last user on release
 	 */
+	// 引用计数
 	atomic_t refcount;
 
 	/*
@@ -46,6 +50,7 @@ struct anon_vma {
 	 */
 	unsigned degree;
 
+	// 指向父 anon_vma 数据结构
 	struct anon_vma *parent;	/* Parent of this anon_vma */
 
 	/*
@@ -58,6 +63,7 @@ struct anon_vma {
 	 */
 
 	/* Interval tree of private "related" vmas */
+	// 红黑树根节点。anon_vma 内部有一颗红黑树
 	struct rb_root_cached rb_root;
 };
 
@@ -74,10 +80,15 @@ struct anon_vma {
  * The "rb" field indexes on an interval tree the anon_vma_chains
  * which link all the VMAs associated with this anon_vma.
  */
+// 起枢纽的作用，比如连接父子进程间的 struct anon_vma 数据结构
 struct anon_vma_chain {
+	// 指向 VMA。可以指向父进程的 VMA，也可以指向子进程的 VMA，具体情况需要具体分析
 	struct vm_area_struct *vma;
+	// 指向 anon_vma 数据结构。可以指向父进程的 anon_vma，也可以指向子进程的 anon_vma，具体情况需要具体分析
 	struct anon_vma *anon_vma;
+	// 链表节点，通常把 anon_vma_chain 添加到 vma->anon_vma_chain 链表中
 	struct list_head same_vma;   /* locked by mmap_sem & page_table_lock */
+	// 红黑树节点，通常把 anon_vma_chain 添加到 anon_vma->rb_root 的红黑树中
 	struct rb_node rb;			/* locked by anon_vma->rwsem */
 	unsigned long rb_subtree_last;
 #ifdef CONFIG_DEBUG_VM_RB
@@ -259,16 +270,21 @@ int page_mapped_in_vma(struct page *page, struct vm_area_struct *vma);
  * anon_lock: for getting anon_lock by optimized way rather than default
  * invalid_vma: for skipping uninterested vma
  */
+// 用于统一管理 unmap 操作
 struct rmap_walk_control {
 	void *arg;
 	/*
 	 * Return false if page table scanning in rmap_walk should be stopped.
 	 * Otherwise, return true.
 	 */
+	// 表示具体断开某个 VMA 上映射的 PTE
 	bool (*rmap_one)(struct page *page, struct vm_area_struct *vma,
 					unsigned long addr, void *arg);
+	// 表示判断一个页面是否断开成功
 	int (*done)(struct page *page);
+	// 实现一个锁机制
 	struct anon_vma *(*anon_lock)(struct page *page);
+	// 表示跳过无效的 VMA
 	bool (*invalid_vma)(struct vm_area_struct *vma, void *arg);
 };
 
