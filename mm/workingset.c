@@ -247,6 +247,8 @@ void *workingset_eviction(struct address_space *mapping, struct page *page)
  * Calculates and evaluates the refault distance of the previously
  * evicted page in the context of the node it was allocated in.
  */
+// workingset_refault() 会计算 Refault Distance，并且判断是否需要把内容缓存添加到活跃LRU链表中，
+// 以避免其在下一次读之前被移出LRU链表
 void workingset_refault(struct page *page, void *shadow)
 {
 	unsigned long refault_distance;
@@ -259,6 +261,8 @@ void workingset_refault(struct page *page, void *shadow)
 	bool workingset;
 	int memcgid;
 
+	// 把该内容缓存之前存放的 shadow 值重新译码，得出书中图 5.12 中 T1 时刻的 inactive_age值，然后把
+	// 当前的 inactive_age 值减去 T1，得到 Refault Distance
 	unpack_shadow(shadow, &memcgid, &pgdat, &eviction, &workingset);
 
 	rcu_read_lock();
@@ -313,6 +317,9 @@ void workingset_refault(struct page *page, void *shadow)
 	if (refault_distance > active_file)
 		goto out;
 
+	// refault_distance <= active_file 说明该页面在下一次读前极有可能会被移除 LRU 链表
+	// 用 SetPageActive(page) 设置该页面的 PG_active 标志位并将其添加到活跃 LRU 链表中，从而避免
+	// 第三次读时该页面被移出 LRU 链表所产生的内存颠簸。
 	SetPageActive(page);
 	atomic_long_inc(&lruvec->inactive_age);
 	inc_lruvec_state(lruvec, WORKINGSET_ACTIVATE);

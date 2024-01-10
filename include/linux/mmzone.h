@@ -223,6 +223,10 @@ static inline int is_active_lru(enum lru_list lru)
 	return (lru == LRU_ACTIVE_ANON || lru == LRU_ACTIVE_FILE);
 }
 
+// 描述扫描 LRU 的统计数据
+// recent_rotated 和 recent_scanned 的比值越大，说明这些被缓存的页面越有价值，它们更应该留下来
+// 匿名页面存放在 recent_rotated[0] 和 recent_scanned[0] 中
+// 文件映射页面存放在 recent_rotated[1] 和 recent_scanned[1] 中
 struct zone_reclaim_stat {
 	/*
 	 * The pageout code in vmscan.c keeps track of how many of the
@@ -232,7 +236,9 @@ struct zone_reclaim_stat {
 	 *
 	 * The anon LRU stats live in [0], file LRU stats in [1]
 	 */
+	// recent_rotated 反映了活跃页面的实际数量
 	unsigned long		recent_rotated[2];
+	// recent_scanned 表示最近扫描的页面数量
 	unsigned long		recent_scanned[2];
 };
 
@@ -241,6 +247,7 @@ struct lruvec {
 	struct list_head		lists[NR_LRU_LISTS];
 	struct zone_reclaim_stat	reclaim_stat;
 	/* Evictions & activations on the inactive file list */
+	// 用于记录文件缓存不活跃 LRU 链表中的移出操作和激活操作的计数
 	atomic_long_t			inactive_age;
 	/* Refaults at the time of last reclaim cycle */
 	unsigned long			refaults;
@@ -530,13 +537,24 @@ struct zone {
 } ____cacheline_internodealigned_in_smp;
 
 enum pgdat_flags {
+	// 表示系统有大量页面堵塞在块设备的 I/O 操作上，应对措施是让系统等待一段时间。判断是否
+	// 设置了该位的函数是 pgdat_memcg_congested()。在扫描页面内存节点的页面时，每次扫描完
+	// 一轮，需要判断当前是否设置了 PGDAT_CONGESTED 标志位。若直接页面回收者发现系统有大量
+	// 回写页面堵塞，那么调用 wait_iff_congested() 函数让页面等待一会儿
 	PGDAT_CONGESTED,		/* pgdat has many dirty pages backed by
 					 * a congested BDI
 					 */
+	// 表示发现 LRU 链表中有大量的脏页。对于匿名页面中的脏页，都会调用 pageout() 函数回写脏页。
+	// 对于文件映射的脏页，这里需要分两种情况：
+	//	1.对于 kswapd 内核线程，不管是否有大量脏页，都会调用 pageout() 函数回写脏页
+	//	2.对于直接页面回收者，只有发现大量的脏页，即设置了 PGDAT_DIRTY 标志位，才会调用 pageout() 
+	//	  函数回写脏页，否则就直接略过该页面
 	PGDAT_DIRTY,			/* reclaim scanning has recently found
 					 * many dirty file pages at the tail
 					 * of the LRU.
 					 */
+	// 表示发现有大量页面正在等待回写到磁盘。在 shrink_page_list() 函数中遇到正在回写的页面时，
+	// kswapd 内核线程应该跳过该页面。但是对于直接页面回收者来说，需要等待这个页面回收完成
 	PGDAT_WRITEBACK,		/* reclaim scanning has recently found
 					 * many pages under writeback
 					 */
@@ -693,6 +711,7 @@ typedef struct pglist_data {
 	unsigned long node_spanned_pages; /* total size of physical page
 					     range, including holes */
 	int node_id;
+	// 等待队列，每个 pg_data_t 数据结构都有一个等待队列，在 free_area_init_core() 函数中初始化
 	wait_queue_head_t kswapd_wait;
 	wait_queue_head_t pfmemalloc_wait;
 	struct task_struct *kswapd;	/* Protected by
@@ -741,6 +760,7 @@ typedef struct pglist_data {
 #endif
 
 	/* Fields commonly accessed by the page reclaim scanner */
+	// 每个内存节点中都有一整套 LRU 链表，由 lruvec 指向
 	struct lruvec		lruvec;
 
 	unsigned long		flags;

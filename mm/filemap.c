@@ -876,6 +876,9 @@ int add_to_page_cache_locked(struct page *page, struct address_space *mapping,
 }
 EXPORT_SYMBOL(add_to_page_cache_locked);
 
+// 把内容缓存第一次加入不活跃 LRU 链表
+// 内容缓存第一次加入 radix_tree 时会分配一个 slot 来存放 inactive_age，这里使用 shadow 指向
+// slot。第一次加入时 shadow 值为空，还没有 Refault Distance，因此添加到不活跃 LRU 链表中
 int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 				pgoff_t offset, gfp_t gfp_mask)
 {

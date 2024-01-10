@@ -781,9 +781,11 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 	};
 	int referenced = 0;
 
+	// page_vma_mapped_walk() 会从虚拟地址 pvmw->address 开始遍历页表，找出对应的 PTE
 	while (page_vma_mapped_walk(&pvmw)) {
 		address = pvmw.address;
 
+		// 若 VMA 的属性是 VM_LOCKED，表示内存是锁定的，直接返回 false
 		if (vma->vm_flags & VM_LOCKED) {
 			page_vma_mapped_walk_done(&pvmw);
 			pra->vm_flags |= VM_LOCKED;
@@ -791,6 +793,9 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 		}
 
 		if (pvmw.pte) {
+			// ptep_clear_flush_young_notify() 函数判断该PTE最近是否被访问过
+			// 如果访问过，那么 PTE_AF 位会被自动置位，并清除 PTE 中的 PTE_AF位，
+			// 最后会调用 flush_tlb_page_nosync() 来刷新这个页面对应的TLB
 			if (ptep_clear_flush_young_notify(vma, address,
 						pvmw.pte)) {
 				/*
@@ -801,6 +806,9 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 				 * already gone, the unmap path will have set
 				 * PG_referenced or activated the page.
 				 */
+				// 这里会排除顺序读的情况，因为顺序读的页面高速缓存是被回收的最佳候选者，
+				// 所以对这些页面高速缓存做了弱访问引用（weak reference）处理，而其余的
+				// 情况都会被当作 PTE 引用，最后增加 pra->referenced 计数，减少 pra->mapcount 计数
 				if (likely(!(vma->vm_flags & VM_SEQ_READ)))
 					referenced++;
 			}
@@ -853,6 +861,8 @@ static bool invalid_page_referenced_vma(struct vm_area_struct *vma, void *arg)
  * Quick test_and_clear_referenced for all mappings to a page,
  * returns the number of ptes which referenced the page.
  */
+// 用于判断页面是否被访问过，并返回引用的PTE的个数，即访问引用这个页面的用户进程空间虚拟页面的个数
+// 核心思想是利用 RMAP 系统来统计访问、引用 PTE 的用户个数
 int page_referenced(struct page *page,
 		    int is_locked,
 		    struct mem_cgroup *memcg,
@@ -863,6 +873,7 @@ int page_referenced(struct page *page,
 		.mapcount = total_mapcount(page),
 		.memcg = memcg,
 	};
+	// 定义 rmap_one() 函数的指针
 	struct rmap_walk_control rwc = {
 		.rmap_one = page_referenced_one,
 		.arg = (void *)&pra,
@@ -870,9 +881,11 @@ int page_referenced(struct page *page,
 	};
 
 	*vm_flags = 0;
+	// 判断 page->_mapcount 是否大于或等于 0
 	if (!page_mapped(page))
 		return 0;
 
+	// 判断 page->mapping 是否有地址空间映射
 	if (!page_rmapping(page))
 		return 0;
 
@@ -891,6 +904,7 @@ int page_referenced(struct page *page,
 		rwc.invalid_vma = invalid_page_referenced_vma;
 	}
 
+	// 遍历所有映射该页面的 PTE
 	rmap_walk(page, &rwc);
 	*vm_flags = pra.vm_flags;
 

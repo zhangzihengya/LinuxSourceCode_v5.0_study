@@ -368,6 +368,9 @@ static void __lru_cache_activate_page(struct page *page)
  * When a newly allocated page is not yet visible, so safe for non-atomic ops,
  * __SetPageReferenced(page) may be substituted for mark_page_accessed(page).
  */
+// 将页面标记为活跃
+// 如果 PG_active==0 && PG_referenced==1，则把该页面加入活跃LRU链表，并设置 PG_active=1，清除PG_reference 标志位
+// 如果 PG_active==0，则设置 PG_referenced 标志位
 void mark_page_accessed(struct page *page)
 {
 	page = compound_head(page);
@@ -386,6 +389,7 @@ void mark_page_accessed(struct page *page)
 			__lru_cache_activate_page(page);
 		ClearPageReferenced(page);
 		if (page_is_file_cache(page))
+			// 第二次访问时会调用 workingset_activation() 函数来增加 lruvec->inactive_age 计数
 			workingset_activation(page);
 	} else if (!PageReferenced(page)) {
 		SetPageReferenced(page);
@@ -397,9 +401,13 @@ EXPORT_SYMBOL(mark_page_accessed);
 
 static void __lru_cache_add(struct page *page)
 {
+	// 这里使用了页向量数据结构，借助一个数组来保存特定数目的页，可以对这些页面执行同样的操作
+	// 页向量会以“批处理的方式”执行，比单独处理一个页面的方式效率要高
 	struct pagevec *pvec = &get_cpu_var(lru_add_pvec);
 
 	get_page(page);
+	// pagevec_add() 函数首先往 pvec->pages[] 数组里添加页面，
+	// 如果没有空间了，则调用 __pagevec_lru_add() 函数把原有的页面添加到 LRU 链表中
 	if (!pagevec_add(pvec, page) || PageCompound(page))
 		__pagevec_lru_add(pvec);
 	put_cpu_var(lru_add_pvec);
@@ -433,6 +441,7 @@ EXPORT_SYMBOL(lru_cache_add_file);
  * pagevec is drained. This gives a chance for the caller of lru_cache_add()
  * have the page added to the active list using mark_page_accessed().
  */
+// 将页面加入 LRU 链表
 void lru_cache_add(struct page *page)
 {
 	VM_BUG_ON_PAGE(PageActive(page) && PageUnevictable(page), page);
@@ -907,6 +916,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 			count_vm_event(UNEVICTABLE_PGCULLED);
 	}
 
+	// 将页面加入到 LRU 链表（添加到链表头）
 	add_page_to_lru_list(page, lruvec, lru);
 	trace_mm_lru_insertion(page, lru);
 }
