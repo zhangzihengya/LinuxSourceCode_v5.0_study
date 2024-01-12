@@ -109,6 +109,7 @@ int PageMovable(struct page *page)
 }
 EXPORT_SYMBOL(PageMovable);
 
+// 设置页面为非 LRU 页面
 void __SetPageMovable(struct page *page, struct address_space *mapping)
 {
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
@@ -117,6 +118,7 @@ void __SetPageMovable(struct page *page, struct address_space *mapping)
 }
 EXPORT_SYMBOL(__SetPageMovable);
 
+// 清除页面的 PAGE_MAPPING_MOVABLE 标志位
 void __ClearPageMovable(struct page *page)
 {
 	VM_BUG_ON_PAGE(!PageLocked(page), page);

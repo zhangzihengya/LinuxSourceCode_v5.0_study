@@ -373,9 +373,12 @@ struct address_space_operations {
 	 * migrate the contents of a page to the specified target. If
 	 * migrate_mode is MIGRATE_ASYNC, it must not block.
 	 */
+	// 用于迁移旧页面的内容到新页面中，并且设置 page 对应的成员和属性
 	int (*migratepage) (struct address_space *,
 			struct page *, struct page *, enum migrate_mode);
+	// 用于分离页面
 	bool (*isolate_page)(struct page *, isolate_mode_t);
+	// 当页面迁移失败时，用于把页面迁移回原来的地方
 	void (*putback_page)(struct page *);
 	int (*launder_page) (struct page *);
 	int (*is_partially_uptodate) (struct page *, unsigned long,
