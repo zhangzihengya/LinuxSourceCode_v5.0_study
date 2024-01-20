@@ -3760,6 +3760,13 @@ out:
 
 #ifdef CONFIG_COMPACTION
 /* Try memory compaction for high-order allocations before reclaim */
+// 压缩内存，并尝试分配出所需要的内存
+// gfp_mask: 传递给页面分配器的分配掩码
+// order: 请求分配页面的大小，其大小为 2 的 order 次幂个物理页面
+// alloc_flags: 页面分配器内部使用的分配标志位
+// ac: 页面分配器内部使用的分配上下文描述符
+// prio: 内存规整的优先级
+// compact_result: 内存规整后返回的结果
 static struct page *
 __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 		unsigned int alloc_flags, const struct alloc_context *ac,
@@ -3775,6 +3782,7 @@ __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 	psi_memstall_enter(&pflags);
 	noreclaim_flag = memalloc_noreclaim_save();
 
+	// 遍历内存节点中所有的 zone ，在每个 zone 上进行内存规整
 	*compact_result = try_to_compact_pages(gfp_mask, order, alloc_flags, ac,
 									prio);
 
@@ -3790,6 +3798,7 @@ __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 	 */
 	count_vm_event(COMPACTSTALL);
 
+	// 尝试分配内存
 	page = get_page_from_freelist(gfp_mask, order, alloc_flags, ac);
 
 	if (page) {

@@ -186,22 +186,39 @@ extern int user_min_free_kbytes;
  * are moved to the end of a zone during a compaction run and the run
  * completes when free_pfn <= migrate_pfn
  */
+// 内存规整机制内部使用的一个控制描述符
 struct compact_control {
+	// 空闲页面链表
 	struct list_head freepages;	/* List of free pages to migrate to */
+	// 可迁移页面链表
 	struct list_head migratepages;	/* List of pages being migrated */
+	// 扫描的 zone
 	struct zone *zone;
+	// 已经分离的空闲页面数量
 	unsigned long nr_freepages;	/* Number of isolated free pages */
+	// 准备迁移的页面数量
 	unsigned long nr_migratepages;	/* Number of pages to migrate */
+	// 已经扫描并用于迁移的页面总数
 	unsigned long total_migrate_scanned;
+	// 已经扫描并用于空闲页面总数
 	unsigned long total_free_scanned;
+	// isolate_freepages 扫描的起始页帧号
 	unsigned long free_pfn;		/* isolate_freepages search base */
+	// 上一次做内存规整时停止扫描的页帧号，可以作为这一次页面扫描的起始页帧号
 	unsigned long migrate_pfn;	/* isolate_migratepages search base */
+	// 上一次扫描可迁移页面的位置
 	unsigned long last_migrated_pfn;/* Not yet flushed page being freed */
+	// 调用页面分配器时的分配掩码
 	const gfp_t gfp_mask;		/* gfp mask of a direct compactor */
+	// 调用页面分配器时的 order 值
 	int order;			/* order a direct compactor needs */
+	// 页面迁移类型
 	int migratetype;		/* migratetype of direct compactor */
+	// 页面分配器内部使用的标志位
 	const unsigned int alloc_flags;	/* alloc flags of a direct compactor */
+	// 页面分配器根据分配掩码计算出来的首选的 zone 编号
 	const int classzone_idx;	/* zone index of a direct compactor */
+	// 页面迁移的模式————同步模式和异步模式
 	enum migrate_mode mode;		/* Async or sync migration mode */
 	bool ignore_skip_hint;		/* Scan blocks even if marked skip */
 	bool no_set_skip_hint;		/* Don't mark blocks for skipping */
