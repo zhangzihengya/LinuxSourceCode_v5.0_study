@@ -153,20 +153,28 @@ struct ksm_scan {
  * @rmap_hlist_len: number of rmap_item entries in hlist or STABLE_NODE_CHAIN
  * @nid: NUMA node id of stable tree in which linked (may not match kpfn)
  */
+// 用于描述稳定红黑树的节点，表示一个至少由两个页面合并而成的页面
 struct stable_node {
 	union {
+		// 红黑树节点，用于加入稳定红黑树的节点
 		struct rb_node node;	/* when node of stable tree */
 		struct {		/* when listed for migration */
+			// 当 head 等于 &migrate_nodes 时表示这是一个临时的节点，主要用于 NUMA 系统
 			struct list_head *head;
 			struct {
+				// 链表节点，用于添加到链式稳定节点的 hlist 链表中
 				struct hlist_node hlist_dup;
+				// 链表节点，用于添加到 migrate_nodes 链表中，等待迁移到合适的内存节点的稳定红黑树中
 				struct list_head list;
 			};
 		};
 	};
+	// 链表头，共享这个 KSM 页面的 rmap_items 都添加到这个链表中
 	struct hlist_head hlist;
 	union {
+		// KSM 页面的帧号
 		unsigned long kpfn;
+		// 上一次垃圾回收的时间
 		unsigned long chain_prune_time;
 	};
 	/*
@@ -175,8 +183,10 @@ struct stable_node {
 	 * to reliably detect underflows.
 	 */
 #define STABLE_NODE_CHAIN -1024
+	// 挂到 hlist 链表成员的数量，若赋值为 STABLE_NODE_CHAIN，表示是一个链式的稳定节点
 	int rmap_hlist_len;
 #ifdef CONFIG_NUMA
+	// 内存节点编号
 	int nid;
 #endif
 };
@@ -193,21 +203,31 @@ struct stable_node {
  * @head: pointer to stable_node heading this list in the stable tree
  * @hlist: link into hlist of rmap_items hanging off that stable_node
  */
+// rmap_item 数据结构代表一个页面
 struct rmap_item {
+	// 所有的 rmap_item 连接成一个链表，链表头在 mm_slot.rmap_list
 	struct rmap_item *rmap_list;
 	union {
+		// 当 rmap_item 加入稳定红黑树时，它指向 VMA 的 anon_vma 数据结构
 		struct anon_vma *anon_vma;	/* when stable */
 #ifdef CONFIG_NUMA
+		// 内存节点编号
 		int nid;		/* when node of unstable tree */
 #endif
 	};
+	// 指向进程内存描述符
 	struct mm_struct *mm;
+	// rmap_item 所跟踪的用户空间虚拟地址
 	unsigned long address;		/* + low bits used for flags below */
+	// 虚拟地址对应物理页面的旧校验值
 	unsigned int oldchecksum;	/* when unstable */
 	union {
+		// rmap_item 加入不稳定红黑树的节点
 		struct rb_node node;	/* when node of unstable tree */
 		struct {		/* when listed from stable tree */
+			// 加入稳定红黑树的节点
 			struct stable_node *head;
+			// hlist 节点，用于添加到稳定节点的 hlist 链表中
 			struct hlist_node hlist;
 		};
 	};
@@ -475,11 +495,15 @@ static int break_ksm(struct vm_area_struct *vma, unsigned long addr)
 
 	do {
 		cond_resched();
+		// follow_page() 函数通过 VMA 和虚拟地址获取普通映射的数据结构
+		// FOLL_GET | FOLL_MIGRATION | FOLL_REMOTE 表示增加该页面的 _count 值
+		// FOLL_MIGRATION 表示如果该页面在迁移的过程中，那么会等待页迁移完成
 		page = follow_page(vma, addr,
 				FOLL_GET | FOLL_MIGRATION | FOLL_REMOTE);
 		if (IS_ERR_OR_NULL(page))
 			break;
 		if (PageKsm(page))
+			// 对于 KSM 页面，直接调用 handle_mm_fault() 人为制造一个写错误 (FAULT_FLAG_WRITE) 的缺页中断
 			ret = handle_mm_fault(vma, addr,
 					FAULT_FLAG_WRITE | FAULT_FLAG_REMOTE);
 		else
@@ -531,6 +555,8 @@ static struct vm_area_struct *find_mergeable_vma(struct mm_struct *mm,
 	return vma;
 }
 
+// 处理已经把页面设置成写保护的情况，并人为制造一个写错误的缺页中断，即写时复制的场景
+// 参数 rmap_item 保存了该页面的虚拟地址和进程数据结构，由此可以找到对应的 VMA
 static void break_cow(struct rmap_item *rmap_item)
 {
 	struct mm_struct *mm = rmap_item->mm;
@@ -1033,10 +1059,14 @@ static inline int pages_identical(struct page *page1, struct page *page2)
 	return !memcmp_pages(page1, page2);
 }
 
+// vma 表示 page 对应的 VMA
+// page 表示准备要设置为写保护的物理页面
+// orig_pte 是 page 原来的 PTE 的值
 static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 			      pte_t *orig_pte)
 {
 	struct mm_struct *mm = vma->vm_mm;
+	// 初始化 page_vma_mapped_walk 数据结构，用于遍历页表
 	struct page_vma_mapped_walk pvmw = {
 		.page = page,
 		.vma = vma,
@@ -1045,16 +1075,20 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 	int err = -EFAULT;
 	struct mmu_notifier_range range;
 
+	// page_address_in_vma() 通过 vma 和 page 可以找到对应的虚拟地址
 	pvmw.address = page_address_in_vma(page, vma);
 	if (pvmw.address == -EFAULT)
 		goto out;
 
 	BUG_ON(PageTransCompound(page));
 
+	// 初始化一个 mmu_notifier_range
 	mmu_notifier_range_init(&range, mm, pvmw.address,
 				pvmw.address + PAGE_SIZE);
+	// 通知所有注册了 invalidate_range_start 操作的 mmu_notifier
 	mmu_notifier_invalidate_range_start(&range);
 
+	// page_vma_mapped_walk() 遍历页表，找到的页表项存放在 pvmw->pte 里
 	if (!page_vma_mapped_walk(&pvmw))
 		goto out_mn;
 	if (WARN_ONCE(!pvmw.pte, "Unexpected PMD mapping?"))
@@ -1066,6 +1100,7 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 		pte_t entry;
 
 		swapped = PageSwapCache(page);
+		// 刷新这个页面对应的高速缓存
 		flush_cache_page(vma, pvmw.address, page_to_pfn(page));
 		/*
 		 * Ok this is tricky, when get_user_pages_fast() run it doesn't
@@ -1081,11 +1116,15 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 		 *
 		 * See Documentation/vm/mmu_notifier.rst
 		 */
+		// ptep_clear_flush() 清空 PTE 内容并刷新相应的 TLB，保证没有 DIRECT_IO 发生，
+		// 函数返回该 PTE 原来的内容
 		entry = ptep_clear_flush(vma, pvmw.address, pvmw.pte);
 		/*
 		 * Check that no O_DIRECT or similar I/O is in progress on the
 		 * page
 		 */
+		// 新生成一个具有只读属性的 PTE ，并设置到硬件页面中
+		// 若左右侧不相等，说明有内核代码路径正在操作该页面，因此 write_protect_page() 只能错误返回
 		if (page_mapcount(page) + 1 + swapped != page_count(page)) {
 			set_pte_at(mm, pvmw.address, pvmw.pte, entry);
 			goto out_unlock;
@@ -1094,8 +1133,10 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 			set_page_dirty(page);
 
 		if (pte_protnone(entry))
+			// pte_mkclean() 宏清除 PTE_DIRTY 位和设置 PTE_RDONLY 位
 			entry = pte_mkclean(pte_clear_savedwrite(entry));
 		else
+			// pte_wrprotect() 宏可以设置页表项的 PTE_RDONLY 位并清除 PTE_WRITE 位
 			entry = pte_mkclean(pte_wrprotect(entry));
 		set_pte_at_notify(mm, pvmw.address, pvmw.pte, entry);
 	}
@@ -1200,15 +1241,20 @@ out:
  *
  * This function returns 0 if the pages were merged, -EFAULT otherwise.
  */
+// vma 表示被扫描页面对应的 VMA
+// page 表示被扫描的页面
+// kpage 表示稳定的红黑树中的 KSM 页面或者候选 KSM 页面
 static int try_to_merge_one_page(struct vm_area_struct *vma,
 				 struct page *page, struct page *kpage)
 {
 	pte_t orig_pte = __pte(0);
 	int err = -EFAULT;
 
+	// 若 page 和 kpage 表示同一个页面，则返回 0
 	if (page == kpage)			/* ksm page forked */
 		return 0;
 
+	// 剔除不是匿名页面的候选页
 	if (!PageAnon(page))
 		goto out;
 
@@ -1219,9 +1265,11 @@ static int try_to_merge_one_page(struct vm_area_struct *vma,
 	 * prefer to continue scanning and merging different pages,
 	 * then come back to this page when it is unlocked.
 	 */
+	// 尝试获取页锁
 	if (!trylock_page(page))
 		goto out;
 
+	// 剔除透明巨页
 	if (PageTransCompound(page)) {
 		if (split_huge_page(page))
 			goto out_unlock;
@@ -1233,7 +1281,10 @@ static int try_to_merge_one_page(struct vm_area_struct *vma,
 	 * ptes are necessarily already write-protected.  But in either
 	 * case, we need to lock and check page_count is not raised.
 	 */
+	// write_protect_page() 对该页面映射的 VMA 的 PTE 进行写保护操作，即 PTE 属性设置为只读属性
 	if (write_protect_page(vma, page, &orig_pte) == 0) {
+		// 在与不稳定的红黑树节点合并时，参数 kpage 传过来的可能是空指针，主要作用是设置 page 为稳定
+		// 的节点，并且设置该页面的活动情况
 		if (!kpage) {
 			/*
 			 * While we hold page lock, upgrade page from
@@ -1249,6 +1300,8 @@ static int try_to_merge_one_page(struct vm_area_struct *vma,
 			if (!PageDirty(page))
 				SetPageDirty(page);
 			err = 0;
+		// pages_identical() 再一次比较 page 和 kpage 内容是否一致，如果一致，则调用 replace_page()
+		// 把该页面对应的 PTE 属性设置到对应的 kpage 中
 		} else if (pages_identical(page, kpage))
 			err = replace_page(vma, page, kpage, orig_pte);
 	}
@@ -1275,6 +1328,10 @@ out:
  *
  * This function returns 0 if the pages were merged, -EFAULT otherwise.
  */
+// 把两个内容完全相同的页面合并成一个 KSM 页面（尝试把 page 合并到 kpage 中）
+// rmap_item 表示候选页对应的 rmap_item 结构
+// page 表示候选页
+// kpage 表示稳定的红黑树中的 KSM 页面 或者候选 KSM 页面
 static int try_to_merge_with_ksm_page(struct rmap_item *rmap_item,
 				      struct page *page, struct page *kpage)
 {
@@ -1283,10 +1340,12 @@ static int try_to_merge_with_ksm_page(struct rmap_item *rmap_item,
 	int err = -EFAULT;
 
 	down_read(&mm->mmap_sem);
+	// 查找虚拟地址，以找到对应的 VMA
 	vma = find_mergeable_vma(mm, rmap_item->address);
 	if (!vma)
 		goto out;
 
+	// 尝试合并 page 到 kpage 中
 	err = try_to_merge_one_page(vma, page, kpage);
 	if (err)
 		goto out;
@@ -1881,6 +1940,7 @@ again:
 	set_page_stable_node(kpage, stable_node_dup);
 	stable_node_dup->rmap_hlist_len = 0;
 	DO_NUMA(stable_node_dup->nid = nid);
+	// 判断是否需要为稳定的节点建立链表
 	if (!need_chain) {
 		rb_link_node(&stable_node_dup->node, parent, new);
 		rb_insert_color(&stable_node_dup->node, root);
@@ -2205,6 +2265,7 @@ static struct rmap_item *get_next_rmap_item(struct mm_slot *mm_slot,
 	return rmap_item;
 }
 
+// ksmd 内核线程获取要扫描的页面
 static struct rmap_item *scan_get_next_rmap_item(struct page **page)
 {
 	struct mm_struct *mm;
@@ -2285,12 +2346,14 @@ next_mm:
 		while (ksm_scan.address < vma->vm_end) {
 			if (ksm_test_exit(mm))
 				break;
+			// follow_page() 函数通过 VMA 和虚拟地址 ksm_scan.address 来查找物理页面的 page 数据结构
 			*page = follow_page(vma, ksm_scan.address, FOLL_GET);
 			if (IS_ERR_OR_NULL(*page)) {
 				ksm_scan.address += PAGE_SIZE;
 				cond_resched();
 				continue;
 			}
+			// 判断这个页面是否为匿名页面，只有匿名页面才会被 ksmd 内核线程扫面和合并
 			if (PageAnon(*page)) {
 				flush_anon_page(vma, *page, ksm_scan.address);
 				flush_dcache_page(*page);
@@ -2367,16 +2430,20 @@ next_mm:
  * ksm_do_scan  - the ksm scanner main worker function.
  * @scan_npages:  number of pages we want to scan before we return.
  */
+// 扫描和合并页面
 static void ksm_do_scan(unsigned int scan_npages)
 {
 	struct rmap_item *rmap_item;
 	struct page *uninitialized_var(page);
 
+	// 尝试合并 scan_npages 个页面
 	while (scan_npages-- && likely(!freezing(current))) {
 		cond_resched();
+		// 获取一个合适的匿名页面
 		rmap_item = scan_get_next_rmap_item(&page);
 		if (!rmap_item)
 			return;
+		// 让页面在 KSM 中稳定和不稳定的两颗红黑树中查找是否有可合并的对象，并尝试合并它们
 		cmp_and_merge_page(page, rmap_item);
 		put_page(page);
 	}
@@ -2483,6 +2550,7 @@ int __ksm_enter(struct mm_struct *mm)
 	needs_wakeup = list_empty(&ksm_mm_head.mm_list);
 
 	spin_lock(&ksm_mmlist_lock);
+	// 把 mm 添加到 mm_slots_hash 哈希表中
 	insert_to_mm_slots_hash(mm, mm_slot);
 	/*
 	 * When KSM_RUN_MERGE (or KSM_RUN_STOP),
@@ -2497,9 +2565,11 @@ int __ksm_enter(struct mm_struct *mm)
 	if (ksm_run & KSM_RUN_UNMERGE)
 		list_add_tail(&mm_slot->mm_list, &ksm_mm_head.mm_list);
 	else
+		// 把 mm->slot 添加到 ksm_scan.mm_slot->mm_list 链表中
 		list_add_tail(&mm_slot->mm_list, &ksm_scan.mm_slot->mm_list);
 	spin_unlock(&ksm_mmlist_lock);
 
+	// 设置 mm->flags 中的 MMF_VM_MERGEABLE 标识位，表示这个进程已经被添加到 KSM 系统中
 	set_bit(MMF_VM_MERGEABLE, &mm->flags);
 	mmgrab(mm);
 
@@ -2578,6 +2648,7 @@ struct page *ksm_might_need_to_copy(struct page *page,
 	return new_page;
 }
 
+// 遍历稳定节点中的 hlist 链表，访问 rmap_items
 void rmap_walk_ksm(struct page *page, struct rmap_walk_control *rwc)
 {
 	struct stable_node *stable_node;
@@ -3135,6 +3206,7 @@ static const struct attribute_group ksm_attr_group = {
 };
 #endif /* CONFIG_SYSFS */
 
+// KSM 在初始化时会创建一个名为 ksmd 的内核线程
 static int __init ksm_init(void)
 {
 	struct task_struct *ksm_thread;

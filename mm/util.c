@@ -446,6 +446,8 @@ void kvfree(const void *addr)
 }
 EXPORT_SYMBOL(kvfree);
 
+// 若这个页面是 KSM 页面，通过 __page_rmapping() 函数可以获取 page->mapping 指针
+// 对于 KSM 页面，page->mapping 指针指向稳定的节点
 static inline void *__page_rmapping(struct page *page)
 {
 	unsigned long mapping;

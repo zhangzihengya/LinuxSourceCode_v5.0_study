@@ -450,6 +450,7 @@ static __always_inline int __PageMovable(struct page *page)
  * anon_vma, but to that page's node of the stable tree.
  */
 // 用于判断该页面是否为 KSM 页面
+// 判断方法：判断 page->mapping 中最低两位有没有设置 PAGE_MAPPING_FLAGS
 static __always_inline int PageKsm(struct page *page)
 {
 	page = compound_head(page);
