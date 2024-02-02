@@ -3640,7 +3640,9 @@ void warn_alloc(gfp_t gfp_mask, nodemask_t *nodemask, const char *fmt, ...)
 
 	cpuset_print_current_mems_allowed();
 	pr_cont("\n");
+	// 输出函数调用栈
 	dump_stack();
+	// 输出当前系统的内存信息
 	warn_alloc_show_mem(gfp_mask, nodemask);
 }
 
@@ -4276,11 +4278,18 @@ check_retry_cpuset(int cpuset_mems_cookie, struct alloc_context *ac)
 	return false;
 }
 
+// gfp_mask：表示调用页面分配器时传递的分配掩码
+// order：表示需要分配页面的大小，大小为 2 的 order 次幂个连续物理页面
+// ac：表示页面分配器内部使用的控制参数数据结构
 static inline struct page *
 __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 						struct alloc_context *ac)
 {
+	// can_direct_reclaim 表示是否允许调用直接页面回收机制
+	// 那些隐含了 __GFP_DIRECT_RECLAIM 标志位的分配掩码都会使用直接页面回收机制
 	bool can_direct_reclaim = gfp_mask & __GFP_DIRECT_RECLAIM;
+	// costly_order 表示会形成一定的内存分配压力。PAGE_ALLOC_COSTLY_ORDER 定义为3，如当分配请求
+	// order 为 4 时，即要分配 64KB 大小的连续物理内存，会给页面分配器带来一定的内存压力
 	const bool costly_order = order > PAGE_ALLOC_COSTLY_ORDER;
 	struct page *page = NULL;
 	unsigned int alloc_flags;
@@ -4296,6 +4305,9 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	 * We also sanity check to catch abuse of atomic reserves being used by
 	 * callers that are not in atomic context.
 	 */
+	// 检查是否在非中断上下文中滥用 __GFP_ATOMIC，使用 __GFP_ATOMIC 会输出一次警告
+	// __GFP_ATOMIC 表示调用页面分配器的进程不能直接回收页面或者等待，调用者通常在中断上下文中。
+	// 另外，__GFP_ATOMIC 是优先级比较高的分配行为，它允许访问部分的系统预留内存
 	if (WARN_ON_ONCE((gfp_mask & (__GFP_ATOMIC|__GFP_DIRECT_RECLAIM)) ==
 				(__GFP_ATOMIC|__GFP_DIRECT_RECLAIM)))
 		gfp_mask &= ~__GFP_ATOMIC;
@@ -4311,6 +4323,7 @@ retry_cpuset:
 	 * kswapd needs to be woken up, and to avoid the cost of setting up
 	 * alloc_flags precisely. So we do that now.
 	 */
+	// gfp_to_alloc_flags() 重新设置分配掩码 gfp_mask
 	alloc_flags = gfp_to_alloc_flags(gfp_mask);
 
 	/*
@@ -4319,18 +4332,22 @@ retry_cpuset:
 	 * there was a cpuset modification and we are retrying - otherwise we
 	 * could end up iterating over non-eligible zones endlessly.
 	 */
+	// 重新计算首选推荐的 zone，因为我们可能在快速路径中修改了内存节点掩码或者使用 cpuset 机制做了修改。
 	ac->preferred_zoneref = first_zones_zonelist(ac->zonelist,
 					ac->high_zoneidx, ac->nodemask);
 	if (!ac->preferred_zoneref->zone)
 		goto nopage;
 
 	if (alloc_flags & ALLOC_KSWAPD)
+		// 唤醒 kswapd 内核线程
 		wake_all_kswapds(order, gfp_mask, ac);
 
 	/*
 	 * The adjusted alloc_flags might result in immediate success, so try
 	 * that first
 	 */
+	// 因为在 gfp_to_alloc_flags() 函数中调整了分配掩码 alloc_flags，所以将最低警戒水位（ALLOC_WMARK_MIN）
+	// 作为判断条件。尝试以最低警戒水位为条件，判断是否能分配内存
 	page = get_page_from_freelist(gfp_mask, order, alloc_flags, ac);
 	if (page)
 		goto got_pg;
@@ -4344,6 +4361,14 @@ retry_cpuset:
 	 * Don't try this for allocations that are allowed to ignore
 	 * watermarks, as the ALLOC_NO_WATERMARKS attempt didn't yet happen.
 	 */
+	// 若以最低警戒水位为条件还不能分配成功，在 3 种情况下可以考虑尝试先调用直接内存规整机制来解决
+	// 页面分配失败的问题：
+	//  1. 允许调用直接页面回收机制
+	//  2. 高成本的分配需求 costly_order。这时，系统可能有足够的空闲内存，但是没有满足分配需求的连续页面，
+	//     调用内存规整机制可能能解决这个问题。或者对于请求，分配不可迁移的多个连续物理页面（即order大于0）
+	//  3. 不允许访问系统预留内存。gfp_pfmemalloc_allowed() 表示是否允许访问系统预留的内存，若返回 ALLOC_NO_WAIERMARKS，
+	//     表示不用考虑水位；若返回0，表示不允许访问系统保留的内存
+	// 同时满足上述 3 种情况，才会调用 __alloc_pages_direct_compact() 函数尝试内存规划
 	if (can_direct_reclaim &&
 			(costly_order ||
 			   (order > 0 && ac->migratetype != MIGRATE_MOVABLE))
@@ -4382,9 +4407,11 @@ retry_cpuset:
 
 retry:
 	/* Ensure kswapd doesn't accidentally go to sleep as long as we loop */
+	// 确保 kswapd 内核线程不会进入睡眠，因此我们又重新唤醒它
 	if (alloc_flags & ALLOC_KSWAPD)
 		wake_all_kswapds(order, gfp_mask, ac);
 
+	// __gfp_pfmemalloc_flags() 判断是否允许访问系统预留的内存，若返回 0，表示不允许访问预留内存
 	reserve_flags = __gfp_pfmemalloc_flags(gfp_mask);
 	if (reserve_flags)
 		alloc_flags = reserve_flags;
@@ -4394,6 +4421,9 @@ retry:
 	 * ignored. These allocations are high priority and system rather than
 	 * user oriented.
 	 */
+	// 原本的 alloc_flags 设置了 ALLOC_CPUSET，当 gfp_mask 设置了 __GFP_AaTOMIC 时会清除 ALLOC_CPUSET，
+	// 表示调用者在中断上下文中。另外，reserve_flags 表示运行访问系统预留的内存。这两种情况下，我们重新计算
+	// 首选推荐的 zone。
 	if (!(alloc_flags & ALLOC_CPUSET) || reserve_flags) {
 		ac->nodemask = NULL;
 		ac->preferred_zoneref = first_zones_zonelist(ac->zonelist,
@@ -4401,25 +4431,32 @@ retry:
 	}
 
 	/* Attempt with potentially adjusted zonelist and alloc_flags */
+	// 重新调用 get_page_from_freelist() 尝试一次页面分配，若成功则返回退出
 	page = get_page_from_freelist(gfp_mask, order, alloc_flags, ac);
 	if (page)
 		goto got_pg;
 
 	/* Caller is not willing to reclaim, we can't balance anything */
+	// 若调用者不支持直接页面回收，那么我们没有其他可以做的了，跳转到 nopage 处
 	if (!can_direct_reclaim)
 		goto nopage;
 
 	/* Avoid recursion of direct reclaim */
+	// 若当前进程的进程描述符设置了 PF_MEMALLOC，那么会在 __gfP_pfmemalloc_flags() 函数中返回
+	// ALLOC_NO_WATERMARKS，表示完全忽略水位条件，可以访问系统全部的预留内存。在 get_page_from_freelist()
+	// 不用检查 zone 的水位即可直接分配内存，既然忽略水位的情况下都不能分配出物理内存，那只能跳转到 nopage 标签处。
 	if (current->flags & PF_MEMALLOC)
 		goto nopage;
 
 	/* Try direct reclaim and then allocating */
+	// 调用直接页面回收机制。经过一轮的直接内存规整之后会尝试分配内存，若成功，则返回 page 数据结构
 	page = __alloc_pages_direct_reclaim(gfp_mask, order, alloc_flags, ac,
 							&did_some_progress);
 	if (page)
 		goto got_pg;
 
 	/* Try direct compaction and then allocating */
+	// 调用直接内存规整机制。经过一轮的直接内存规整之后会尝试分配内存，若成功，则返回 page 数据结构
 	page = __alloc_pages_direct_compact(gfp_mask, order, alloc_flags, ac,
 					compact_priority, &compact_result);
 	if (page)
@@ -4433,9 +4470,12 @@ retry:
 	 * Do not retry costly high order allocations unless they are
 	 * __GFP_RETRY_MAYFAIL
 	 */
+	// 若要分配大块的物理内存并且分配掩码中没有设置 __GFP_RETRY_MAYFAIL，那说明分配行为中不允许我们继续重试
 	if (costly_order && !(gfp_mask & __GFP_RETRY_MAYFAIL))
 		goto nopage;
 
+	// should_reclaim_retry() 判断是否需要重试直接页面回收机制，若返回 0 则表示需要重试
+	// did_some_progress 表示已经成功回收的页面数量
 	if (should_reclaim_retry(gfp_mask, order, ac, alloc_flags,
 				 did_some_progress > 0, &no_progress_loops))
 		goto retry;
@@ -4446,6 +4486,7 @@ retry:
 	 * implementation of the compaction depends on the sufficient amount
 	 * of free memory (see __compaction_suitable)
 	 */
+	// should_compact_retry() 判断是否需要重试内存规整
 	if (did_some_progress > 0 &&
 			should_compact_retry(ac, order, alloc_flags,
 				compact_result, &compact_priority,
@@ -4454,21 +4495,27 @@ retry:
 
 
 	/* Deal with possible cpuset update races before we start OOM killing */
+	// check_retry_cpuset() 判断是否重新尝试新的 cpuset，这个需要使能 CONFIG_CPUSETS 功能
 	if (check_retry_cpuset(cpuset_mems_cookie, ac))
 		goto retry_cpuset;
 
 	/* Reclaim has failed us, start killing things */
+	// 所有的 cpuset 都重新尝试过后，若还是没法分配出所需要的内存，那么将使用 OOM killer 机制
+	// __alloc_pages_may_oom() 函数会调用 OOM killer 机制来终止占用内存比较多的进程，从而释放出一些内存
 	page = __alloc_pages_may_oom(gfp_mask, order, ac, &did_some_progress);
 	if (page)
 		goto got_pg;
 
 	/* Avoid allocations with no watermarks from looping endlessly */
+	// 如果被终止的进程是当前进程并且 alloc_flags 为 ALLOC_OOM 或者 gfp_mask 为 __GFP_NOMEMALLOC，那么跳转
+	// 到 nopage 标签处
 	if (tsk_is_oom_victim(current) &&
 	    (alloc_flags == ALLOC_OOM ||
 	     (gfp_mask & __GFP_NOMEMALLOC)))
 		goto nopage;
 
 	/* Retry as long as the OOM killer is making progress */
+	// did_some_progress 表示我们刚才终止进程后释放了一些内存，因此跳转到 retry 标签处重新尝试分配内存
 	if (did_some_progress) {
 		no_progress_loops = 0;
 		goto retry;
@@ -4483,6 +4530,7 @@ nopage:
 	 * Make sure that __GFP_NOFAIL request doesn't leak out and make sure
 	 * we always retry
 	 */
+	// 若 gfp_mask 设置了 __GFP_NOFAIL，表示分配不能失败，那么只能想尽办法来重试
 	if (gfp_mask & __GFP_NOFAIL) {
 		/*
 		 * All existing users of the __GFP_NOFAIL are blockable, so warn
@@ -4512,6 +4560,7 @@ nopage:
 		 * could deplete whole memory reserves which would just make
 		 * the situation worse
 		 */
+		// 又一次尝试分配内存
 		page = __alloc_pages_cpuset_fallback(gfp_mask, order, ALLOC_HARDER, ac);
 		if (page)
 			goto got_pg;
@@ -4519,6 +4568,7 @@ nopage:
 		cond_resched();
 		goto retry;
 	}
+// 若 gfp_mask 没有设置 __GFP_NOFAIL，只能调用 warn_alloc() 来宣告这次内存分配失败了
 fail:
 	warn_alloc(gfp_mask, ac->nodemask,
 			"page allocation failure: order:%u", order);
