@@ -2015,6 +2015,7 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
  * This array describes the order lists are fallen back to when
  * the free lists for the desirable migrate type are depleted
  */
+// 此数组描述了当所需迁移类型的空闲列表耗尽时的挪用规则
 static int fallbacks[MIGRATE_TYPES][4] = {
 	[MIGRATE_UNMOVABLE]   = { MIGRATE_RECLAIMABLE, MIGRATE_MOVABLE,   MIGRATE_TYPES },
 	[MIGRATE_MOVABLE]     = { MIGRATE_RECLAIMABLE, MIGRATE_UNMOVABLE, MIGRATE_TYPES },
@@ -2228,6 +2229,7 @@ static void steal_suitable_fallback(struct zone *zone, struct page *page,
 	 * likelihood of future fallbacks. Wake kswapd now as the node
 	 * may be balanced overall and kswapd will not wake naturally.
 	 */
+	// 临时提高 zone 的水位
 	boost_watermark(zone);
 	if (alloc_flags & ALLOC_KSWAPD)
 		set_bit(ZONE_BOOSTED_WATERMARK, &zone->flags);
@@ -2446,6 +2448,7 @@ static bool unreserve_highatomic_pageblock(const struct alloc_context *ac,
  * deviation from the rest of this file, to make the for loop
  * condition simpler.
  */
+// 挪用页块
 static __always_inline bool
 __rmqueue_fallback(struct zone *zone, int order, int start_migratetype,
 						unsigned int alloc_flags)
@@ -2470,6 +2473,7 @@ __rmqueue_fallback(struct zone *zone, int order, int start_migratetype,
 	 * approximates finding the pageblock with the most free pages, which
 	 * would be too costly to do exactly.
 	 */
+	// 查找 fallbacks[][] 数组
 	for (current_order = MAX_ORDER - 1; current_order >= min_order;
 				--current_order) {
 		area = &(zone->free_area[current_order]);
@@ -2511,6 +2515,7 @@ find_smallest:
 	 */
 	VM_BUG_ON(current_order == MAX_ORDER);
 
+// 尝试从其他迁移类型中迁移空闲页块到请求的迁移类型中
 do_steal:
 	page = list_first_entry(&area->free_list[fallback_mt],
 							struct page, lru);
@@ -2518,6 +2523,7 @@ do_steal:
 	steal_suitable_fallback(zone, page, alloc_flags, start_migratetype,
 								can_steal);
 
+	// 记录 mm_page_alloc_extfrag 外碎片化事件的发生
 	trace_mm_page_alloc_extfrag(page, order, current_order,
 		start_migratetype, fallback_mt);
 
@@ -3308,6 +3314,8 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 		if (!area->nr_free)
 			continue;
 
+		// 若在不可移动、可移动以及可回收这 3 个迁移类型的空闲链表中有满足分配需求的空闲页块，
+		// 那也算满足分配请求
 		for (mt = 0; mt < MIGRATE_PCPTYPES; mt++) {
 			if (!list_empty(&area->free_list[mt]))
 				return true;
