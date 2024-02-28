@@ -620,6 +620,7 @@ struct task_struct {
 	void				*stack;
 	atomic_t			usage;
 	/* Per task flags (PF_*), defined further below: */
+	// 用于描述进程属性的一些标志位
 	unsigned int			flags;
 	unsigned int			ptrace;
 
@@ -706,6 +707,8 @@ struct task_struct {
 
 	struct sched_info		sched_info;
 
+	// 系统中所有进程的双向链表，链表头是 init_task 进程，也就是所谓的进程 0（注意是所有进程，而非所有线程！）
+	// init_task 进程的 task.prev 字段指向链表中最后插入进程的 task_struct 数据结构中的 tasks 成员
 	struct list_head		tasks;
 #ifdef CONFIG_SMP
 	struct plist_node		pushable_tasks;
@@ -776,6 +779,7 @@ struct task_struct {
 	struct restart_block		restart_block;
 
 	pid_t				pid;
+	// 线程组 ID
 	pid_t				tgid;
 
 #ifdef CONFIG_STACKPROTECTOR
@@ -821,6 +825,7 @@ struct task_struct {
 	/* PID/PID hash table linkage. */
 	struct pid			*thread_pid;
 	struct hlist_node		pid_links[PIDTYPE_MAX];
+	// 线程组链表
 	struct list_head		thread_group;
 	struct list_head		thread_node;
 

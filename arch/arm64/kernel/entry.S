@@ -1080,8 +1080,12 @@ NOKPROBE(cpu_switch_to)
 /*
  * This is how we return from a fork.
  */
+// 子进程第一次执行时会跳转到该函数
 ENTRY(ret_from_fork)
 	bl	schedule_tail
+	// 判断 X19 寄存器的值是否为空
+	// 如果为空则说明这是一个用户进程，那么跳转到 ret_to_user
+	// 如果不为空则说明是一个内核线程，直接执行 X19 寄存器中保存的内核线程回调函数
 	cbz	x19, 1f				// not a kernel thread
 	mov	x0, x20
 	blr	x19

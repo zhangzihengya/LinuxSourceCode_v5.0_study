@@ -713,9 +713,11 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	struct page *page;
 
 	/* pte contains position in swap or file, so copy. */
+	// pte_present() 判断父进程 PTE 对应的页面是否在内存中
 	if (unlikely(!pte_present(pte))) {
 		swp_entry_t entry = pte_to_swp_entry(pte);
 
+		// 判断是否是交换分区的 PTE
 		if (likely(!non_swap_entry(entry))) {
 			if (swap_duplicate(entry) < 0)
 				return entry.val;
@@ -729,6 +731,7 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 				spin_unlock(&mmlist_lock);
 			}
 			rss[MM_SWAPENTS]++;
+		// 判断是否是迁移的 PTE
 		} else if (is_migration_entry(entry)) {
 			page = migration_entry_to_page(entry);
 
@@ -783,6 +786,8 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	 * If it's a COW mapping, write protect it both
 	 * in the parent and the child
 	 */
+	// 如果父进程 VMA 属性是一个写时复制映射，即不是共享的进程地址空间（没有设置 VM_SHARED）,
+	// 那么父进程和子进程对应的 PTE 都要设置成写保护。
 	if (is_cow_mapping(vm_flags) && pte_write(pte)) {
 		ptep_set_wrprotect(src_mm, addr, src_pte);
 		pte = pte_wrprotect(pte);
@@ -792,13 +797,18 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	 * If it's a shared mapping, mark it clean in
 	 * the child
 	 */
+	// 如果父进程 VMA 的对应属性是 VM_SHARED，那么调用 pte_mkclean() 函数清除 PTE 的 DIRTY 标志位
 	if (vm_flags & VM_SHARED)
 		pte = pte_mkclean(pte);
+	// pte_mkold() 函数清除 PTE 中的 PTE_AF 位
 	pte = pte_mkold(pte);
 
+	// vm_normal_page() 通过父进程的 PTE 来找到对应的物理页面的 page 数据结构，注意这里返回的页面是普通映射的
 	page = vm_normal_page(vma, addr, pte);
 	if (page) {
+		// 增加 _refcount 计数
 		get_page(page);
+		// 增加 _mapcount 计数
 		page_dup_rmap(page, false);
 		rss[mm_counter(page)]++;
 	} else if (pte_devmap(pte)) {
@@ -817,6 +827,7 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	}
 
 out_set_pte:
+	// set_pte_at() 函数把 PTE 内容设置到子进程对应的 dst_pte 中
 	set_pte_at(dst_mm, addr, dst_pte, pte);
 	return 0;
 }

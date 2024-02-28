@@ -2309,6 +2309,7 @@ static inline void init_schedstats(void) {}
 /*
  * fork()/clone()-time setup:
  */
+// 主要用于进程调度的基本初始化
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
 	unsigned long flags;
@@ -2319,6 +2320,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	 * nobody will actually run it, and a signal or other external
 	 * event cannot wake it up and insert it on the runqueue either.
 	 */
+	// TASK_NEW 用于保证这个进程不会运行，并且任何信号或者外部的事件不会唤醒这个进程，也不会把这个进程插入运行队列
 	p->state = TASK_NEW;
 
 	/*
@@ -2368,7 +2370,9 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	 * We're setting the CPU for the first time, we don't migrate,
 	 * so use __set_task_cpu().
 	 */
+	// 为子进程设置 CPU，子进程将来会运行在这个 CPU 上
 	__set_task_cpu(p, smp_processor_id());
+	// 调用调度类中的 task_fork 方法，完成与调度器相关的初始化
 	if (p->sched_class->task_fork)
 		p->sched_class->task_fork(p);
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
@@ -2380,6 +2384,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 #if defined(CONFIG_SMP)
 	p->on_cpu = 0;
 #endif
+	// 初始化 thread_info 数据结构中的 preempt_count 计数，它是为支持内核抢占而引入的
 	init_task_preempt_count(p);
 #ifdef CONFIG_SMP
 	plist_node_init(&p->pushable_tasks, MAX_PRIO);
