@@ -446,7 +446,7 @@ struct sched_statistics {
 #endif
 };
 
-// 调度实体的数据结构
+// 调度实体的数据结构，描述进程作为一个调度实体参与调度所需要的所有信息
 struct sched_entity {
 	/* For load-balancing: */
 	// 调度实体的权重
@@ -455,7 +455,9 @@ struct sched_entity {
 	unsigned long			runnable_weight;
 	// 调度实体作为节点被插入 CFS 的红黑树中
 	struct rb_node			run_node;
+	// 在就绪队列中有一个链表 rq->cfs_tasks，调度实体添加到就绪队列之后会添加到该链表中
 	struct list_head		group_node;
+	// 进程进入就绪队列时，on_rq 会被设置为 1。当该进程处于睡眠等原因退出就绪队列时，on_rq 会被清零
 	unsigned int			on_rq;
 
 	// 调度实体的虚拟时间的起始时间
@@ -464,10 +466,13 @@ struct sched_entity {
 	u64				sum_exec_runtime;
 	// 调度实体的虚拟时间
 	u64				vruntime;
+	// 上一次统计调度实体运行的总时间
 	u64				prev_sum_exec_runtime;
 
+	// 该调度实体发生迁移的次数
 	u64				nr_migrations;
 
+	// 统计信息
 	struct sched_statistics		statistics;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -633,8 +638,11 @@ struct task_struct {
 	// 进程正在哪个 CPU 上执行
 	unsigned int			cpu;
 #endif
+	// 用于 wake affine 特性
 	unsigned int			wakee_flips;
+	// 用于记录上一次 wake affine 的时间
 	unsigned long			wakee_flip_decay_ts;
+	// 表示上一次唤醒的是哪一个进程
 	struct task_struct		*last_wakee;
 
 	/*
@@ -648,6 +656,9 @@ struct task_struct {
 	// 进程上一次是在哪个 CPU 上执行
 	int				wake_cpu;
 #endif
+	// 用于设置进程的状态，支持的状态如下：
+	// TASK_ON_RQ_QUEUED：表示进程正在就绪队列中运行
+	// TASK_ON_RQ_MIGRATING：表示处于迁移过程中的进程，他可能不在就绪队列中
 	int				on_rq;
 
 	// 动态优先级，是调度类考虑的优先级
@@ -686,6 +697,7 @@ struct task_struct {
 
 	// 用来确定进程的类型，比如是普通进程还是实时进程
 	unsigned int			policy;
+	// 进程允许运行的 CPU 个数
 	int				nr_cpus_allowed;
 	// 进程可以在哪几个CPU上运行
 	cpumask_t			cpus_allowed;
@@ -705,6 +717,7 @@ struct task_struct {
 	struct list_head		rcu_tasks_holdout_list;
 #endif /* #ifdef CONFIG_TASKS_RCU */
 
+	// 调度相关信息
 	struct sched_info		sched_info;
 
 	// 系统中所有进程的双向链表，链表头是 init_task 进程，也就是所谓的进程 0（注意是所有进程，而非所有线程！）
@@ -1258,6 +1271,7 @@ struct task_struct {
 	randomized_struct_fields_end
 
 	/* CPU-specific state of this task: */
+	// thread_struct 数据结构用于存放和具体架构相关的一些信息
 	struct thread_struct		thread;
 
 	/*

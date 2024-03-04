@@ -154,6 +154,7 @@ static inline void cpu_load_update_active(struct rq *this_rq) { }
  */
 #define RUNTIME_INF		((u64)~0ULL)
 
+// 用于判断进程属于哪个优先级
 static inline int idle_policy(int policy)
 {
 	return policy == SCHED_IDLE;
@@ -492,6 +493,7 @@ struct cfs_rq {
 	unsigned long		runnable_weight;
 	// 可运行状态的进程数量
 	unsigned int		nr_running;
+	// h 指 hierarchy。在支持组调度机制时，这个成员表示 CFS 就绪队列中包含组调度里所有可运行状态的进程数量
 	unsigned int		h_nr_running;
 
 	// 统计就绪队列的总执行时间
@@ -509,9 +511,11 @@ struct cfs_rq {
 	 * 'curr' points to currently running entity on this cfs_rq.
 	 * It is set to NULL otherwise (i.e when none are currently running).
 	 */
+	// 指当前正在运行的进程
 	struct sched_entity	*curr;
 	// 用于切换进程时下一个即将运行的进程
 	struct sched_entity	*next;
+	// 用于抢占内核，当唤醒进程抢占了当前进程时，last 指向这个当前进程
 	struct sched_entity	*last;
 	struct sched_entity	*skip;
 
@@ -812,6 +816,8 @@ extern void rto_push_irq_work_func(struct irq_work *work);
  * (such as the load balancing or the thread migration code), lock
  * acquire operations must be ordered by ascending &runqueue.
  */
+// 描述 CPU 的通用就绪队列，记录了一个就绪队列所需要的全部信息
+// 系统中每个 CPU 有一个就绪队列。this_rq() 可以获取当前 CPU 的数据结构 rq
 struct rq {
 	/* runqueue lock: */
 	raw_spinlock_t		lock;
@@ -875,37 +881,51 @@ struct rq {
 	struct task_struct	*idle;
 	// 指向系统的 stop 进程
 	struct task_struct	*stop;
+	// 下一次做负载均衡的时间
 	unsigned long		next_balance;
+	// 进程切换时用于指向前任进程的内存描述符 mm
 	struct mm_struct	*prev_mm;
 
+	// 用于更新就绪队列时钟的标志位
 	unsigned int		clock_update_flags;
+	// 每次时钟节拍到来时会更新这个时钟
 	u64			clock;
+	// 每次时钟节拍到来时会更新这个时钟，计算进程 vruntime 时使用该时钟
 	u64			clock_task;
 
 	atomic_t		nr_iowait;
 
 #ifdef CONFIG_SMP
+	// 调度域的根
 	struct root_domain	*rd;
+	// 指向 CPU 对应的最低等级的调度域，如果系统中没有配置 CONFIG_SCHED_SMT，那么指向该 CPU 对应的 MC 等级调度域
 	struct sched_domain	*sd;
 
+	// CPU 对应普通进程的量化计算能力，系统大约会预留最高计算能力的 80% 给普通进程，预留 20% 给实时进程
 	unsigned long		cpu_capacity;
+	// CPU 最高的量化计算能力
 	unsigned long		cpu_capacity_orig;
 
 	struct callback_head	*balance_callback;
 
 	unsigned char		idle_balance;
 
+	// 若一个进程的实际算力大于 CPU 额定算力的 80%，那么这个进程称为不合适进程。misfit_task_load 记录这种进程的量化负载
 	unsigned long		misfit_task_load;
 
 	/* For active balancing */
 	int			active_balance;
+	// 用于负载均衡，表示迁移的目标 CPU
 	int			push_cpu;
 	struct cpu_stop_work	active_balance_work;
 
 	/* CPU of this runqueue: */
+	// 用于表示就绪队列运行在哪个 CPU 上
 	int			cpu;
+	// 用于表示 CPU 处于 active 状态或者 online 状态
 	int			online;
 
+	// 可运行状态的调度实体会添加到这个链表头里
 	struct list_head cfs_tasks;
 
 	struct sched_avg	avg_rt;

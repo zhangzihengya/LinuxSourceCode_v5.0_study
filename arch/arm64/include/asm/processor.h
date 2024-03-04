@@ -110,6 +110,8 @@ struct debug_info {
 #endif
 };
 
+// X19～X28 寄存器在函数调用过程中是需要保存到栈里的，因为它们是函数调用者和被调用者共用的数据
+// X0～X7寄存器用于传递函数参数，剩余的通用寄存器大多数用作临时寄存器，它们在进程切换过程中不需要保存
 struct cpu_context {
 	unsigned long x19;
 	unsigned long x20;
@@ -126,6 +128,7 @@ struct cpu_context {
 	unsigned long pc;
 };
 
+// 存放和架构相关的一些信息
 struct thread_struct {
 	// 保存进程硬件上下文
 	struct cpu_context	cpu_context;	/* cpu context */

@@ -145,9 +145,13 @@ static bool check_update_reserved_asid(u64 asid, u64 newasid)
 static u64 new_context(struct mm_struct *mm)
 {
 	static u32 cur_idx = 1;
+	// 获取当前进程的 ASID
 	u64 asid = atomic64_read(&mm->context.id);
+	// 获取当前系统的 ASID，这个值存储在全局原子变量 asid_generation 中 
 	u64 generation = atomic64_read(&asid_generation);
 
+	// 刚创建进程时，mm->context.id 值初始化为 0。如果这时 ASID 不为 0，说明该进程已经分配过 ASID。
+	// 如果原来的 ASID 还有效，那么只需要再加上新的 generation 值即可组成一个新的软件 ASID
 	if (asid != 0) {
 		u64 newasid = generation | (asid & ~ASID_MASK);
 
@@ -155,6 +159,7 @@ static u64 new_context(struct mm_struct *mm)
 		 * If our current ASID was active during a rollover, we
 		 * can continue to use it and this was just a false alarm.
 		 */
+		// 判断当前的 ASID 是否有效
 		if (check_update_reserved_asid(asid, newasid))
 			return newasid;
 
@@ -173,21 +178,27 @@ static u64 new_context(struct mm_struct *mm)
 	 * a reserved TTBR0 for the init_mm and we allocate ASIDs in even/odd
 	 * pairs.
 	 */
+	// 如果之前的硬件 ASID 不能使用，那么从 asid_map 中查找第一个空闲的位，并将其作为这次的硬件 ASID
 	asid = find_next_zero_bit(asid_map, NUM_USER_ASIDS, cur_idx);
 	if (asid != NUM_USER_ASIDS)
 		goto set_asid;
 
 	/* We're out of ASIDs, so increment the global generation count */
+	// 如果找不到一个空闲的位，说明发生了溢出，那么只能提升 generation 值，并调用 flush_context() 函数
+	// 刷新所有 CPU 上的 TLB，同时把 asid_map 清零
 	generation = atomic64_add_return_relaxed(ASID_FIRST_VERSION,
 						 &asid_generation);
 	flush_context();
 
 	/* We have more ASIDs than CPUs, so this will always succeed */
+	// 在 asid_map 中找到一个空闲的位，这次一定能成功，因为刚才已经把 asid_map 清零了
 	asid = find_next_zero_bit(asid_map, NUM_USER_ASIDS, 1);
 
+// 新生成一个 ASID
 set_asid:
 	__set_bit(asid, asid_map);
 	cur_idx = asid;
+	// 返回一个新的软件 ASID
 	return idx2asid(asid) | generation;
 }
 
@@ -199,6 +210,7 @@ void check_and_switch_context(struct mm_struct *mm, unsigned int cpu)
 	if (system_supports_cnp())
 		cpu_set_reserved_ttbr0();
 
+	// 通过原子操作读取软件的 ASID
 	asid = atomic64_read(&mm->context.id);
 
 	/*
@@ -215,7 +227,10 @@ void check_and_switch_context(struct mm_struct *mm, unsigned int cpu)
 	 *   relaxed xchg in flush_context will treat us as reserved
 	 *   because atomic RmWs are totally ordered for a given location.
 	 */
+	// 读取 Per-CPU 变量的 active_asids
 	old_active_asid = atomic64_read(&per_cpu(active_asids, cpu));
+	// 判断全局原子变量 asid_generation 存储的软件 generation 计数和进程内存描述符存储的软件 generation 计数是否相同
+	// 另外还需要通过 atomic64_cmpxchg() 原子交换指令来设置新的 asid 到 Per-CPU 变量 active_asids 中
 	if (old_active_asid &&
 	    !((asid ^ atomic64_read(&asid_generation)) >> asid_bits) &&
 	    atomic64_cmpxchg_relaxed(&per_cpu(active_asids, cpu),
@@ -224,18 +239,22 @@ void check_and_switch_context(struct mm_struct *mm, unsigned int cpu)
 
 	raw_spin_lock_irqsave(&cpu_asid_lock, flags);
 	/* Check that our ASID belongs to the current generation. */
+	// 重新做一次软件 generation 计数的比较，如果还不相同，说明至少发生了一次 ASID 硬件溢出，需要分配一个新的软件 ASID 计数
+	// 并设置到 mm->context.id 中
 	asid = atomic64_read(&mm->context.id);
 	if ((asid ^ atomic64_read(&asid_generation)) >> asid_bits) {
 		asid = new_context(mm);
 		atomic64_set(&mm->context.id, asid);
 	}
 
+	// 硬件 ASID 发生溢出时，需要刷新本地的 TLB
 	if (cpumask_test_and_clear_cpu(cpu, &tlb_flush_pending))
 		local_flush_tlb_all();
 
 	atomic64_set(&per_cpu(active_asids, cpu), asid);
 	raw_spin_unlock_irqrestore(&cpu_asid_lock, flags);
 
+// switch_mm_fastpath 标签表示换入进程的 ASID 依然属于同一个批次，也就是说还没有发生 ASID 硬件溢出
 switch_mm_fastpath:
 
 	arm64_apply_bp_hardening();
@@ -245,6 +264,7 @@ switch_mm_fastpath:
 	 * emulating PAN.
 	 */
 	if (!system_uses_ttbr0_pan())
+		// 进行页表的切换
 		cpu_switch_mm(mm->pgd, mm);
 }
 

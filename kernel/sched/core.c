@@ -2314,6 +2314,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
 	unsigned long flags;
 
+	// 把创建进程的调度实体的相关成员初始化为 0，因为这些值不能复用父进程的相关值，
+	// 子进程将来要加入调度器中参与调度，和父进程“分道扬镳”
 	__sched_fork(clone_flags, p);
 	/*
 	 * We mark the process as NEW here. This guarantees that
@@ -2326,6 +2328,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	/*
 	 * Make sure we do not leak PI boosting priority to the child.
 	 */
+	// 设置子进程的优先级为父进程的 normal
 	p->prio = current->normal_prio;
 
 	/*
@@ -2356,6 +2359,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	else
 		p->sched_class = &fair_sched_class;
 
+	// 初始化与子进程的调度实体 se 相关的成员
 	init_entity_runnable_average(&p->se);
 
 	/*
@@ -2416,12 +2420,14 @@ unsigned long to_ratio(u64 period, u64 runtime)
  * that must be done for every newly created context, then puts the task
  * on the runqueue and wakes it.
  */
+// 把新进程添加到调度器中
 void wake_up_new_task(struct task_struct *p)
 {
 	struct rq_flags rf;
 	struct rq *rq;
 
 	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
+	// 设置进程的状态为 TASK_RUNNING
 	p->state = TASK_RUNNING;
 #ifdef CONFIG_SMP
 	/*
@@ -2433,12 +2439,16 @@ void wake_up_new_task(struct task_struct *p)
 	 * as we're not fully set-up yet.
 	 */
 	p->recent_used_cpu = task_cpu(p);
+	// __set_task_cpu() 为子进程重新设置即将要运行的CPU
+	// select_task_rq() 调用 CFS 的调度类的 select_task_rq() 函数选择一个最合适的 CPU，其选择方法
+	// 是选择最合适的调度域中最悠闲的 CPU
 	__set_task_cpu(p, select_task_rq(p, task_cpu(p), SD_BALANCE_FORK, 0));
 #endif
 	rq = __task_rq_lock(p, &rf);
 	update_rq_clock(rq);
 	post_init_entity_util_avg(&p->se);
 
+	// activate_task() 调用 enqueue_task() 函数来把子进程添加到调度器中
 	activate_task(rq, p, ENQUEUE_NOCLOCK);
 	p->on_rq = TASK_ON_RQ_QUEUED;
 	trace_sched_wakeup_new(p);
@@ -2806,12 +2816,17 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 /*
  * context_switch - switch to the new MM and the new thread's register state.
  */
+// rq 表示进程切换所在的就绪队列
+// prev 指将要被换出的进程
+// next 指将要被换入的进程
+// rf 表示 rq_flags
 static __always_inline struct rq *
 context_switch(struct rq *rq, struct task_struct *prev,
 	       struct task_struct *next, struct rq_flags *rf)
 {
 	struct mm_struct *mm, *oldmm;
 
+	// 设置 next 进程描述符中的 on_cpu 成员为 1，表示 next 进程即将进入执行状态
 	prepare_task_switch(rq, prev, next);
 
 	mm = next->mm;
@@ -2830,14 +2845,18 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 * membarrier after storing to rq->curr, before returning to
 	 * user-space.
 	 */
+	// 若 next 进程的 mm 成员为空，则说明这是一个内核线程，需要借用 prev 进程的活跃内存描述符 active_mm
 	if (!mm) {
 		next->active_mm = oldmm;
+		// mmgrab() 增加 prev->active_mm 的 mm_count
 		mmgrab(oldmm);
 		enter_lazy_tlb(oldmm, next);
 	} else
+		// 对于普通进程，需要做一些进程地址空间切换的处理
 		// 实质上是把新进程的页表基地址设置到页表基地址寄存器
 		switch_mm_irqs_off(oldmm, mm, next);
 
+	// 处理 prev 进程也是一个内核线程的情况，prev 进程马上就要被换出，因此设置 prev->active_mm 为 NULL
 	if (!prev->mm) {
 		prev->active_mm = NULL;
 		rq->prev_mm = oldmm;
@@ -2848,11 +2867,14 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	prepare_lock_switch(rq, next, rf);
 
 	/* Here we just switch the register state and the stack. */
+	// 新旧进程的切换点
 	// 切换到 next 进程的内核态栈和硬件上下文
 	switch_to(prev, next, prev);
 	barrier();
 
 	// finish_task_switch 函数是由 next 进程去执行
+	// 在 finish_task_switch() 函数中，会递减 mm_count,设置 prev 的 on_cpu 成员为 0，表示 prev 进程已退出执行
+	// 状态，相当于由 next 进程来收拾 prev 进程的“残局”
 	return finish_task_switch(prev);
 }
 
@@ -3055,6 +3077,8 @@ unsigned long long task_sched_runtime(struct task_struct *p)
  * This function gets called by the timer code, with HZ frequency.
  * We call it with interrupts disabled.
  */
+// 每当时钟中断发生时，Linux 调度器的 scheduler_tick() 函数会被调用，执行和调度相关的一些操作，
+// 如检查是否有进程需要调度和切换
 void scheduler_tick(void)
 {
 	int cpu = smp_processor_id();
@@ -3066,8 +3090,11 @@ void scheduler_tick(void)
 
 	rq_lock(rq, &rf);
 
+	// 更新当前 CPU 就绪队列（rq）中的时钟计数 clock 和 clock_task 成员
 	update_rq_clock(rq);
+	// task_tick() 用于处理时钟节拍到来时与调度器相关的事情
 	curr->sched_class->task_tick(rq, curr, 0);
+	// 用于更新运行队列中的 cpu_load[] 数组
 	cpu_load_update_active(rq);
 	calc_global_load_tick(rq);
 	psi_task_tick(rq);
@@ -3078,6 +3105,7 @@ void scheduler_tick(void)
 
 #ifdef CONFIG_SMP
 	rq->idle_balance = idle_cpu(cpu);
+	// 触发 SMP 负载均衡机制
 	trigger_load_balance(rq);
 #endif
 }
@@ -3333,6 +3361,7 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	 * higher scheduling class, because otherwise those loose the
 	 * opportunity to pull in more work from other CPUs.
 	 */
+	// 
 	if (likely((prev->sched_class == &idle_sched_class ||
 		    prev->sched_class == &fair_sched_class) &&
 		   rq->nr_running == rq->cfs.h_nr_running)) {
@@ -3402,6 +3431,8 @@ again:
  * WARNING: must be called with preemption disabled!
  */
 // 调度器的核心函数，作用是选择和切换到一个合适的进程并运行
+// preempt 是布尔类型变量，用于表示本次调度是否为抢占调度
+// 抢占调度延迟的计算：记录所有进程的开始调度时间，根据 preempt 值（挂载点：trace_sched_switch）只计算抢占调度延迟的时间
 static void __sched notrace __schedule(bool preempt)
 {
 	struct task_struct *prev, *next;
@@ -3410,15 +3441,22 @@ static void __sched notrace __schedule(bool preempt)
 	struct rq *rq;
 	int cpu;
 
+	// 获取当前 CPU
 	cpu = smp_processor_id();
+	// 由当前 CPU 获取数据结构 rq
 	rq = cpu_rq(cpu);
+	// prev 指向当前进程
 	prev = rq->curr;
 
+	// 用于判断当前进程是否处于 atomic 上下文中
+	// 所谓 atomic 上下文包含硬件中断上下文、软中断上下文等
+	// 若此时处于 atomic 上下文中，这是一个 bug，那么内核会发出警告并且输出内核函数调用栈（发出的警告是BUG:scheduling while atomic）
 	schedule_debug(prev);
 
 	if (sched_feat(HRTICK))
 		hrtick_clear(rq);
 
+	// 关闭本地 CPU 中断
 	local_irq_disable();
 	rcu_note_context_switch(preempt);
 
@@ -3430,6 +3468,7 @@ static void __sched notrace __schedule(bool preempt)
 	 * The membarrier system call requires a full memory barrier
 	 * after coming from user-space, before storing to rq->curr.
 	 */
+	// 申请一个自旋锁
 	rq_lock(rq, &rf);
 	smp_mb__after_spinlock();
 
@@ -3438,10 +3477,17 @@ static void __sched notrace __schedule(bool preempt)
 	update_rq_clock(rq);
 
 	switch_count = &prev->nivcsw;
+	// 用于判断当前进程是否主动请求调度
+	// preempt 用于判断本次调度是否为抢占调度，即是否中断返回前夕或者系统调用返回用户空间
+	// 前夕发生的抢占调度
+	// prev->state 表示当前进程的运行状态，如果当前进程处于运行状态（0），说明此刻正在发生
+	// 抢占调度，如果当前进程处于其他状态，说明它主动请求调度，如主动调用 schedule()。通常
+	// 主动请求调用之前会提前设置当前进程的运行状态为 TASK_UNINTERRUPTIBLE 或者 TASK_INTERRUPTIBLE
 	if (!preempt && prev->state) {
 		if (signal_pending_state(prev->state, prev)) {
 			prev->state = TASK_RUNNING;
 		} else {
+			// 把当前进程移出就绪队列
 			deactivate_task(rq, prev, DEQUEUE_SLEEP | DEQUEUE_NOCLOCK);
 			prev->on_rq = 0;
 
@@ -3469,10 +3515,13 @@ static void __sched notrace __schedule(bool preempt)
 		switch_count = &prev->nvcsw;
 	}
 
-	next = pick_next_task(rq, prev, &rf);	// 选择下一个要运行的进程
+	// 从就绪队列中选择一个最合适的进程 next
+	next = pick_next_task(rq, prev, &rf);
+	// 清除当前进程的 TIF_NEED_RESCHED 标识位，表示它接下来不会被调度
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
 
+	// 若选出的下一个进程和当前进程不是同一个进程，那么可以进行进程的切换
 	if (likely(prev != next)) {
 		rq->nr_switches++;
 		rq->curr = next;
@@ -3538,8 +3587,11 @@ asmlinkage __visible void __sched schedule(void)
 
 	sched_submit_work(tsk);
 	do {
+		// 关闭内核抢占
 		preempt_disable();
+		// 核心实现
 		__schedule(false);
+		// 打开内核抢占
 		sched_preempt_enable_no_resched();
 	} while (need_resched());
 }

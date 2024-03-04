@@ -57,10 +57,18 @@ static inline void cpu_set_reserved_ttbr0(void)
 	isb();
 }
 
+// 进行页表的切换
+// pgd 表示用户进程 PGD
+// mm 表示用户进程的内存描述符 mm
 static inline void cpu_switch_mm(pgd_t *pgd, struct mm_struct *mm)
 {
+	// 使用 BUG_ON() 来对pgd进行判断，若等于 swapper_pg_dir，则说明这是一个无效的pgd，因为我们这里要切换的是用户进程。
+	// 如果next进程是一个内核线程，就不需要调用 switch_mm_irqs_off() 来切换用户空间的进程地址空间了
 	BUG_ON(pgd == swapper_pg_dir);
+	// 设置 TTBR0_EL1 指向一个 empty_zero_page
 	cpu_set_reserved_ttbr0();
+	// 进行真正的页表切换
+	// 第一个参数是 next 进程 PGD 的基地址，另外一个是 next 进程的内存描述符
 	cpu_do_switch_mm(virt_to_phys(pgd),mm);
 }
 
@@ -234,9 +242,11 @@ static inline void __switch_mm(struct mm_struct *next)
 		return;
 	}
 
+	// 完成与 ARM 架构相关的硬件设置，如刷新 TLB 和设置硬件页表等
 	check_and_switch_context(next, cpu);
 }
 
+// 把新进程的页表基地址设置到页表基地址寄存器
 static inline void
 switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	  struct task_struct *tsk)

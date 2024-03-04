@@ -34,12 +34,19 @@
  * Scheduling policies
  */
 // 调度策略
+// 分时调度策略，非实时进程的默认调度策略，Linux内核没有实现这类调度策略
 #define SCHED_NORMAL		0
+// 先进先出调度策略
 #define SCHED_FIFO		1
+// 循环调度策略，表示优先级相同的进程以循环分享时间的方式来运行
 #define SCHED_RR		2
+// 批处理调度，这个调度策略表示让调度器认为该进程是 CPU 消耗型的，因此，调度器对这类进程的唤醒惩罚比较小。
+// 在 Linux 内核里，该类调度策略表示使用 CFS
 #define SCHED_BATCH		3
 /* SCHED_ISO: reserved but not implemented yet */
+// 空闲调度策略，用于运行低优先级的任务
 #define SCHED_IDLE		5
+// 用于调度有严格时间要求的实时进程
 #define SCHED_DEADLINE		6
 
 /* Can be ORed in to make sure the process is reverted back to SCHED_NORMAL on fork */
