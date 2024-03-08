@@ -262,6 +262,8 @@ static inline struct task_struct *task_of(struct sched_entity *se)
 }
 
 /* Walk up scheduling entities hierarchy */
+// for_each_sched_entity() 宏在使能 CONFIG_FAIR_GROUP_SCHED 功能后，变得与之前不一样了，现在需要遍历进程
+// 调度实体和它的上一级调度实体，如组调度
 #define for_each_sched_entity(se) \
 		for (; se; se = se->parent)
 
@@ -10369,6 +10371,7 @@ int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 	struct cfs_rq *cfs_rq;
 	int i;
 
+	// cfs_rq 是一个指针数组，分配 nr_cpu_ids 个 cfs_rq 数据结构并将其存放到该指针数组中
 	tg->cfs_rq = kcalloc(nr_cpu_ids, sizeof(cfs_rq), GFP_KERNEL);
 	if (!tg->cfs_rq)
 		goto err;
@@ -10376,10 +10379,13 @@ int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 	if (!tg->se)
 		goto err;
 
+	// shares 成员表示该组的权重，这里暂时初始化为 nice 值为 0 的进程权重
 	tg->shares = NICE_0_LOAD;
 
+	// 初始化 CFS 中与带宽控制相关的信息
 	init_cfs_bandwidth(tg_cfs_bandwidth(tg));
 
+	// for 循环遍历系统中所有的 CPU，为每个 CPU 分配一个 cfs_rq 调度队列和 sched_entity 调度实体
 	for_each_possible_cpu(i) {
 		cfs_rq = kzalloc_node(sizeof(struct cfs_rq),
 				      GFP_KERNEL, cpu_to_node(i));
@@ -10391,7 +10397,9 @@ int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 		if (!se)
 			goto err_free_rq;
 
+		// 初始化 cfs_rq 调度队列中的 task_timeline 和 min_vruntime 等信息
 		init_cfs_rq(cfs_rq);
+		// 用于构建组调度结构的关键函数，对组调度的相关数据结构进行初始化
 		init_tg_cfs_entry(tg, cfs_rq, se, i, parent->se[i]);
 		init_entity_runnable_average(se);
 	}

@@ -6333,6 +6333,8 @@ static void sched_free_group(struct task_group *tg)
 }
 
 /* allocate runqueue etc for a new task group */
+// 创建和组织一个组调度
+// parent 指向上一级的组调度节点，系统中有一个组调度的根，命名为 root_task_group
 struct task_group *sched_create_group(struct task_group *parent)
 {
 	struct task_group *tg;
@@ -6341,9 +6343,11 @@ struct task_group *sched_create_group(struct task_group *parent)
 	if (!tg)
 		return ERR_PTR(-ENOMEM);
 
+	// 创建 CFS 需要的组调度数据结构
 	if (!alloc_fair_sched_group(tg, parent))
 		goto err;
 
+	// 创建 realtime 调度器需要的组调度数据结构
 	if (!alloc_rt_sched_group(tg, parent))
 		goto err;
 
@@ -6437,17 +6441,27 @@ void sched_move_task(struct task_struct *tsk)
 	rq = task_rq_lock(tsk, &rf);
 	update_rq_clock(rq);
 
+	// 判断该进程是否正在运行
 	running = task_current(rq, tsk);
+	// 判断进程是否在就绪队列里或者正在运行中
+	// task_struct 数据结构中的 on-rq 成员表示该进程的状态，TASK_ON_RQ_QUEUED 表示该进程在就绪队列中或者正在运行中，
+	// TASK_ON_RQ_MIGRATING 表示该进程正在迁移中
 	queued = task_on_rq_queued(tsk);
 
+	// 如果该进程处于就绪态，那么要让该进程暂时先退出就绪队列
 	if (queued)
 		dequeue_task(rq, tsk, queue_flags);
+	// 如果该进程正在运行中，刚才已经调用 dequeue_task() 函数让进程退出就绪队列，现在只能将其添加回就绪队列中
 	if (running)
 		put_prev_task(rq, tsk);
 
+	// sched_change_group() 函数调用CFS的调度类的操作方法集中的 task_change_group() 方法。另外，这里还调用
+	// set_task_rq() 函数设置进程调度实体中的 cfs_rq 成员和 parent 成员，cfs_rq成员指问组调度中自身的 CFS 
+	// 就绪队列，parent 成员指向组调度中的 se 调度实体
 	sched_change_group(tsk, TASK_MOVE_GROUP);
 
 	if (queued)
+		// 调用 enqueue_task() 函数把退出就绪队列的进程和组调度重新添加回就绪队列
 		enqueue_task(rq, tsk, queue_flags);
 	if (running)
 		set_curr_task(rq, tsk);
@@ -6558,12 +6572,15 @@ static int cpu_cgroup_can_attach(struct cgroup_taskset *tset)
 	return ret;
 }
 
+// 把进程添加到组调度
 static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 {
 	struct task_struct *task;
 	struct cgroup_subsys_state *css;
 
+	// 遍历参数 tset 包含的进程链表
 	cgroup_taskset_for_each(task, css, tset)
+		// 将进程迁移到组调度中
 		sched_move_task(task);
 }
 
