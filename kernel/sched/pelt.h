@@ -1,6 +1,6 @@
 #ifdef CONFIG_SMP
 
-// 
+// 更新一个调度实体在阻塞状态下的负载信息
 int __update_load_avg_blocked_se(u64 now, int cpu, struct sched_entity *se);
 // 更新调度实体 se 的负载信息
 int __update_load_avg_se(u64 now, int cpu, struct cfs_rq *cfs_rq, struct sched_entity *se);
