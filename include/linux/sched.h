@@ -398,14 +398,28 @@ struct util_est {
  * Then it is the load_weight's responsibility to consider overflow
  * issues.
  */
+// 描述调度实体的负载信息，另外，它还能描述一个就绪队列的负载信息
 struct sched_avg {
+	// 上一次更新的时间点，用于计算时间间隔
 	u64				last_update_time;
+	// 对于调度实体来说，它的统计对象是进程的调度实体在可运行状态下的累计衰减总时间
+	// 对于调度队列来说，它是调度队列中所有进程的累计工作总负载（decay_sum_load）,即时间乘权重
 	u64				load_sum;
+	// 对于调度实体来说，它是在就绪队列里可运行状态下的累计衰减总时间（decay_sum_time）
+	// 对于调度队列来说，它统计就绪队列里所有可运行状态下进程的累计工作总负载（decay_sum_load）
 	u64				runnable_load_sum;
+	// 对于调度实体来说，它是正在运行状态下的累计衰减总时间（decay_sum_time）。使用cfs_rq->curr==se来判断当前进程是否正在运行
+	// 对于调度队列来说，它整个就绪队列中所有处于运行状态进程的累计衰减总时间（decay_sum_time）。只要就绪队列里有正在运行的进程，它就会去计算和累加
 	u32				util_sum;
+	// 存放着上一次时间采样时，不能凑成一个周期（l024us）的剩余的时间
 	u32				period_contrib;
+	// 对于调度实体来说，它是可运行状态下的量化负载（decay_avg_load）。在负载均衡算法中，使用该成员来衡量一个进程的负载贡献值，如衡量迁移进程的负载量
+	// 对于调度队列来说，它是调度队列中总的量化负载
 	unsigned long			load_avg;
+	// 对于调度实体来说，它是可运行状态下的量化负载，等于load_avg
+	// 对于调度队列来说，它统计就绪队列里所有可运行状态下进程的总量化负载，在SMP负载均衡算法中使用该成员来比较CPU的负载大小
 	unsigned long			runnable_load_avg;
+	// 实际算力。通常用于体现一个调度实体或者CPU的实际算力需求，类似于CPU使用率的概念
 	unsigned long			util_avg;
 	struct util_est			util_est;
 } ____cacheline_aligned;

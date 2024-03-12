@@ -33,6 +33,9 @@
  * Approximate:
  *   val * y^n,    where y^32 ~= 0.5 (~1 scheduling period)
  */
+// 用于计算第 n 个周期的衰减值
+// val 表示 n 个周期前的负载值
+// n 表示第 n 个周期
 static u64 decay_load(u64 val, u64 n)
 {
 	unsigned int local_n;
@@ -51,6 +54,7 @@ static u64 decay_load(u64 val, u64 n)
 	 * To achieve constant time decay_load.
 	 */
 	if (unlikely(local_n >= LOAD_AVG_PERIOD)) {
+		// 每增加 32ms 就要衰减 1/2 ，相当于右移一位
 		val >>= local_n / LOAD_AVG_PERIOD;
 		local_n %= LOAD_AVG_PERIOD;
 	}
@@ -176,6 +180,7 @@ accumulate_sum(u64 delta, int cpu, struct sched_avg *sa,
  *   load_avg = u_0` + y*(u_0 + u_1*y + u_2*y^2 + ... )
  *            = u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}]
  */
+// 工作负载之和的计算
 static __always_inline int
 ___update_load_sum(u64 now, int cpu, struct sched_avg *sa,
 		  unsigned long load, unsigned long runnable, int running)
@@ -227,6 +232,7 @@ ___update_load_sum(u64 now, int cpu, struct sched_avg *sa,
 	return 1;
 }
 
+// 量化负载的计算
 static __always_inline void
 ___update_load_avg(struct sched_avg *sa, unsigned long load, unsigned long runnable)
 {

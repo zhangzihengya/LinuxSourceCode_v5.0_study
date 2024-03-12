@@ -3608,6 +3608,7 @@ void remove_entity_load_avg(struct sched_entity *se)
 	raw_spin_unlock_irqrestore(&cfs_rq->removed.lock, flags);
 }
 
+// 获取 CFS 就绪队列的量化负载 runnable_load_avg，该值主要用于 SMP 负载均衡
 static inline unsigned long cfs_rq_runnable_load_avg(struct cfs_rq *cfs_rq)
 {
 	return cfs_rq->avg.runnable_load_avg;
@@ -3620,6 +3621,7 @@ static inline unsigned long cfs_rq_load_avg(struct cfs_rq *cfs_rq)
 
 static int idle_balance(struct rq *this_rq, struct rq_flags *rf);
 
+// 获取进程的实际能力 util_avg，该值主要用于绿色节能调度器和 CPU 调频
 static inline unsigned long task_util(struct task_struct *p)
 {
 	return READ_ONCE(p->se.avg.util_avg);
@@ -5123,6 +5125,7 @@ static inline void hrtick_update(struct rq *rq)
 #endif
 
 #ifdef CONFIG_SMP
+// 用于获取 CPU 实际算力 util_avg，该值主要用于绿色节能调度器和 CPU 调频
 static inline unsigned long cpu_util(int cpu);
 static unsigned long capacity_of(int cpu);
 
