@@ -903,7 +903,8 @@ struct rq {
 
 	// CPU 对应普通进程的量化计算能力，系统大约会预留最高计算能力的 80% 给普通进程，预留 20% 给实时进程
 	unsigned long		cpu_capacity;
-	// CPU 最高的量化计算能力
+	// CPU 最高的量化计算能力（cpu_capacity_orig 表示该 CPU 原本的计算能力，在系统启动之初，建立系统调度域拓扑时
+	// 就会计算每个 CPU 的计算能力）
 	unsigned long		cpu_capacity_orig;
 
 	struct callback_head	*balance_callback;
@@ -1373,7 +1374,9 @@ struct sched_group_capacity {
 	unsigned long		cpumask[0];		/* Balance mask */
 };
 
+// 用于描述调度组
 struct sched_group {
+	// next 成员把同一个调度域中所有调度组都串成一个链表
 	struct sched_group	*next;			/* Must be a circular list */
 	atomic_t		ref;
 

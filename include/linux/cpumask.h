@@ -90,9 +90,13 @@ extern struct cpumask __cpu_possible_mask;
 extern struct cpumask __cpu_online_mask;
 extern struct cpumask __cpu_present_mask;
 extern struct cpumask __cpu_active_mask;
+// 表示系统中有多少个可以运行（现在运行或者将来某个时间点运行）的 CPU 内核
 #define cpu_possible_mask ((const struct cpumask *)&__cpu_possible_mask)
+// 表示系统中有多少个正处于运行（online）状态的 CPU 内核
 #define cpu_online_mask   ((const struct cpumask *)&__cpu_online_mask)
+// 表示系统中有多少个可处于运行状态的CPU内核，它们不一定都处于运行状态，有的CPU内核可能被热插拔了
 #define cpu_present_mask  ((const struct cpumask *)&__cpu_present_mask)
+// 表示系统中有多少个活跃的 CPU 内核
 #define cpu_active_mask   ((const struct cpumask *)&__cpu_active_mask)
 
 #if NR_CPUS > 1

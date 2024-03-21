@@ -411,7 +411,7 @@ struct sched_avg {
 	// 对于调度实体来说，它是正在运行状态下的累计衰减总时间（decay_sum_time）。使用cfs_rq->curr==se来判断当前进程是否正在运行
 	// 对于调度队列来说，它整个就绪队列中所有处于运行状态进程的累计衰减总时间（decay_sum_time）。只要就绪队列里有正在运行的进程，它就会去计算和累加
 	u32				util_sum;
-	// 存放着上一次时间采样时，不能凑成一个周期（l024us）的剩余的时间
+	// 存放着上一次时间采样时，不能凑成一个周期（1024us）的剩余的时间
 	u32				period_contrib;
 	// 对于调度实体来说，它是可运行状态下的量化负载（decay_avg_load）。在负载均衡算法中，使用该成员来衡量一个进程的负载贡献值，如衡量迁移进程的负载量
 	// 对于调度队列来说，它是调度队列中总的量化负载
@@ -652,7 +652,12 @@ struct task_struct {
 	// 进程正在哪个 CPU 上执行
 	unsigned int			cpu;
 #endif
-	// 用于 wake affine 特性
+	// 用于 wake affine 特性，wakee_flips 表示 waker(唤醒进程) 切换不同的 wakee(被唤醒进程) 的个数，即
+	// 如果 waker 发现上次唤醒的进程不是 wakee 则 wakee_flips++。
+	// 如果一个 wakee 的 wakee_flips 值比较大，那么 waker 把这种 wakee 放到自身的 CPU 中来运行是比较危险
+	// 的事情（类似于“引狼入室”），把 wakee 的下线 wakee 进程都放到自身的CPU上，加剧了CPU调度的竞争。另外，
+	// waker 的 wakee_flips 值比较大,说明很多进程依赖它来唤醒，waker的调度延迟会增大，再把新的 wakee 放进
+	// 来显然不是好办法。
 	unsigned int			wakee_flips;
 	// 用于记录上一次 wake affine 的时间
 	unsigned long			wakee_flip_decay_ts;

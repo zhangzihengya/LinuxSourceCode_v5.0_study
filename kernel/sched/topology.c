@@ -586,15 +586,20 @@ static void destroy_sched_domains(struct sched_domain *sd)
  * the cpumask of the domain), this allows us to quickly tell if
  * two CPUs are in the same cache domain, see cpus_share_cache().
  */
+// 指向 LLC 调度域
 DEFINE_PER_CPU(struct sched_domain *, sd_llc);
+// LLC 调度域包含多少个 CPU
 DEFINE_PER_CPU(int, sd_llc_size);
+// LLC 调度域第一个 CPU 的编号
 DEFINE_PER_CPU(int, sd_llc_id);
 DEFINE_PER_CPU(struct sched_domain_shared *, sd_llc_shared);
 DEFINE_PER_CPU(struct sched_domain *, sd_numa);
 DEFINE_PER_CPU(struct sched_domain *, sd_asym_packing);
+// 指向第一个包含不同 CPU 架构的调度域，主要用于大/小核架构
 DEFINE_PER_CPU(struct sched_domain *, sd_asym_cpucapacity);
 DEFINE_STATIC_KEY_FALSE(sched_asym_cpucapacity);
 
+// 查找和设置 LLC 调度域
 static void update_top_cache_domain(int cpu)
 {
 	struct sched_domain_shared *sds = NULL;
@@ -1063,11 +1068,15 @@ static struct sched_group *get_group(int cpu, struct sd_data *sdd)
  *
  * Assumes the sched_domain tree is fully constructed
  */
+// 为 CPU 在某个调度域里创建对应的调度组，和调度域一样，每个 CPU 在各个 SDTL 都会创建一个调度组
+// 参数 sd 指向调度域
+// 参数 cpu 指向 CPU
 static int
 build_sched_groups(struct sched_domain *sd, int cpu)
 {
 	struct sched_group *first = NULL, *last = NULL;
 	struct sd_data *sdd = sd->private;
+	// span 是指调度域所管辖的 CPU 位图
 	const struct cpumask *span = sched_domain_span(sd);
 	struct cpumask *covered;
 	int i;
@@ -1077,16 +1086,21 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 
 	cpumask_clear(covered);
 
+	// for_each_cpu_wrap() 是一个改进版的 for_each_cpu()，它可以从指定的位置开始执行 for 循环
+	// 这里从指定 CPU 开始遍历调度域所管辖的 CPU 位图
 	for_each_cpu_wrap(i, span, cpu) {
 		struct sched_group *sg;
 
 		if (cpumask_test_cpu(i, covered))
 			continue;
 
+		// 用于获取指定 CPU 的调度组。如果该调度域里还有子调度域，那么会获取子调度中对应的调度组
 		sg = get_group(i, sdd);
 
+		// 把 get_group() 返回的调度组所管辖的 CPU 位图复制到临时变量里
 		cpumask_or(covered, covered, sched_group_span(sg));
 
+		// 如果该调度域里有多个调度组，那么这些调度组会串成一个调度组的链表，由 sched_group 数据结构中 next 指针来构成
 		if (!first)
 			first = sg;
 		if (last)
@@ -1094,6 +1108,7 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 		last = sg;
 	}
 	last->next = first;
+	// 调度域的 sched_domain 数据结构里的 groups 指针指向这些调度组链表
 	sd->groups = first;
 
 	return 0;
@@ -1206,6 +1221,7 @@ __visit_domain_allocation_hell(struct s_data *d, const struct cpumask *cpu_map)
 {
 	memset(d, 0, sizeof(*d));
 
+	// 创建调度域等数据结构
 	if (__sdt_alloc(cpu_map))
 		return sa_sd_storage;
 	d->sd = alloc_percpu(struct sched_domain *);
@@ -1275,11 +1291,13 @@ static struct cpumask		***sched_domains_numa_masks;
 	 SD_ASYM_PACKING	|	\
 	 SD_SHARE_POWERDOMAIN)
 
+// sd_init() 函数由 tl 和 CPU 编号来获取对应的 sched_domain 数据结构
 static struct sched_domain *
 sd_init(struct sched_domain_topology_level *tl,
 	const struct cpumask *cpu_map,
 	struct sched_domain *child, int dflags, int cpu)
 {
+	// 从 tl->data 中获取对该 CPU 对应的 sched_domain 数据结构
 	struct sd_data *sdd = &tl->data;
 	struct sched_domain *sd = *per_cpu_ptr(sdd->sd, cpu);
 	int sd_id, sd_weight, sd_flags = 0;
@@ -1291,6 +1309,9 @@ sd_init(struct sched_domain_topology_level *tl,
 	sched_domains_curr_level = tl->numa_level;
 #endif
 
+	// tl 数据结构中的 mask 和 sd_flags 都是函数指针变量
+	// tl->mask(cpu) 返回该 CPU 在某个 SDTL 下对应的兄弟 CPU 的位图
+	// cpumask_weight() 函数返回CPU位图的有效位宽
 	sd_weight = cpumask_weight(tl->mask(cpu));
 
 	if (tl->sd_flags)
@@ -1302,6 +1323,7 @@ sd_init(struct sched_domain_topology_level *tl,
 	/* Apply detected topology flags */
 	sd_flags |= dflags;
 
+	// 初始化调度域相关字段
 	*sd = (struct sched_domain){
 		.min_interval		= sd_weight,
 		.max_interval		= 2*sd_weight,
@@ -1339,13 +1361,17 @@ sd_init(struct sched_domain_topology_level *tl,
 #endif
 	};
 
+	// tl->mask(cpu) 返回该 CPU 某个 SDTL 下兄弟 CPU 的位图，cpumask_and() 用于把该 CPU 对应 SDTL 的兄弟 CPU
+	// 位图复制到 span[] 中。sched_domain 数据结构中的 span 成员描述该 SDTL 层级下包含的兄弟 CPU 的位图
 	cpumask_and(sched_domain_span(sd), cpu_map, tl->mask(cpu));
+	// 变量 sd_id 表示 sd 里第一个 CPU
 	sd_id = cpumask_first(sched_domain_span(sd));
 
 	/*
 	 * Convert topological properties into behaviour.
 	 */
 
+	// 初始化具有 SD_ASYM_CPUCAPACITY 属性的调度域
 	if (sd->flags & SD_ASYM_CPUCAPACITY) {
 		struct sched_domain *t = sd;
 
@@ -1359,9 +1385,11 @@ sd_init(struct sched_domain_topology_level *tl,
 			t->flags |= SD_BALANCE_WAKE;
 	}
 
+	// 初始化具有 SD_SHARE_CPUCAPACITY 属性的调度域
 	if (sd->flags & SD_SHARE_CPUCAPACITY) {
 		sd->imbalance_pct = 110;
 
+	// 初始化具有 SD_SHARE_PKG_RESOURCES 属性的调度域
 	} else if (sd->flags & SD_SHARE_PKG_RESOURCES) {
 		sd->imbalance_pct = 117;
 		sd->cache_nice_tries = 1;
@@ -1392,6 +1420,7 @@ sd_init(struct sched_domain_topology_level *tl,
 	 * For all levels sharing cache; connect a sched_domain_shared
 	 * instance.
 	 */
+	// 初始化具有 SD_SHARE_PKG_RESOURCES 属性的调度域
 	if (sd->flags & SD_SHARE_PKG_RESOURCES) {
 		sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
 		atomic_inc(&sd->shared->ref);
@@ -1400,6 +1429,7 @@ sd_init(struct sched_domain_topology_level *tl,
 
 	sd->private = sdd;
 
+	// 返回初始化完成的调度域
 	return sd;
 }
 
@@ -1710,9 +1740,12 @@ static int __sdt_alloc(const struct cpumask *cpu_map)
 	struct sched_domain_topology_level *tl;
 	int j;
 
+	// 遍历系统默认的 CPU 拓扑层次关系数组 default_topology
 	for_each_sd_topology(tl) {
 		struct sd_data *sdd = &tl->data;
 
+		// 分别使用 alloc_percpu() 来为每个 SDTL 层级的调度域（sched_domain）、调度组（sched_group）
+		// 和调度组能力（sched_group_capacity）分配一个 Per-CPU 变量的数据结构
 		sdd->sd = alloc_percpu(struct sched_domain *);
 		if (!sdd->sd)
 			return -ENOMEM;
@@ -1729,6 +1762,8 @@ static int __sdt_alloc(const struct cpumask *cpu_map)
 		if (!sdd->sgc)
 			return -ENOMEM;
 
+		// 遍历所有的 cpu_active_mask 的 CPU，为每个 CPU 都创建一个 sched_domain、sched_group、
+		// sched_group_capacity 数据结构，并且存放在 Per-CPU 变量中
 		for_each_cpu(j, cpu_map) {
 			struct sched_domain *sd;
 			struct sched_domain_shared *sds;
@@ -1810,10 +1845,16 @@ static void __sdt_free(const struct cpumask *cpu_map)
 	}
 }
 
+// 参数tl指的是层级，从最底层SMT遍历到DIE
+// 参数cpu_map指的是cpu_active_mask位图
+// 参数attr指的是sched_domain_attr
+// 参数child指的是子层级的调度域，就是下一级的调度域
+// 参数cpu指的是当前正在处理的CPU编号
 static struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
 		const struct cpumask *cpu_map, struct sched_domain_attr *attr,
 		struct sched_domain *child, int dflags, int cpu)
 {
+	// sd_init() 函数由 t1 和 CPU 编号来获取对应的 sched_domain 数据结构
 	struct sched_domain *sd = sd_init(tl, cpu_map, child, dflags, cpu);
 
 	if (child) {
@@ -1829,6 +1870,8 @@ static struct sched_domain *build_sched_domain(struct sched_domain_topology_leve
 					child->name, sd->name);
 #endif
 			/* Fixup, ensure @sd has at least @child CPUs. */
+			// sched_domain_span() 表示该调度域管辖的 CPU 范围。cpumask_or() 把父子层级的调度域管辖的 CPU 
+			// 都记录在父层级的调度域里，也就是 sched_domain_span() 是往下包含的
 			cpumask_or(sched_domain_span(sd),
 				   sched_domain_span(sd),
 				   sched_domain_span(child));
@@ -1914,6 +1957,7 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 	struct sched_domain_topology_level *tl_asym;
 	bool has_asym = false;
 
+	// __visit_domain_allocation_hell() 函数会调用 __sdt_alloc() 来创建调度域等数据结构
 	alloc_state = __visit_domain_allocation_hell(&d, cpu_map);
 	if (alloc_state != sa_rootdomain)
 		goto error;
@@ -1921,10 +1965,14 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 	tl_asym = asym_cpu_capacity_level(cpu_map);
 
 	/* Set up domains for CPUs specified by the cpu_map: */
+	// 为每个 CPU 创建调度域
+	// 遍历所有的活跃的 CPU，对每个 CPU 遍历所有的 SDTL 层级
 	for_each_cpu(i, cpu_map) {
 		struct sched_domain_topology_level *tl;
 
 		sd = NULL;
+		// 遍历数组 default_topology，为每个 CPU 中的每个 SDTL 都调用 build_sched_domain() 函数
+		// 来建立一套调度域和调度组
 		for_each_sd_topology(tl) {
 			int dflags = 0;
 
@@ -1933,6 +1981,7 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 				has_asym = true;
 			}
 
+			// 调用 build_sched_domain() 函数来初始化某个 CPU 的某个 SDTL 层级的调度域
 			sd = build_sched_domain(tl, cpu_map, attr, sd, dflags, i);
 
 			if (tl == sched_domain_topology)
@@ -1945,13 +1994,17 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 	}
 
 	/* Build the groups for the domains */
+	// 为每个 CPU 创建调度组
+	// 遍历 cpu_active_mask 中所有的 CPU
 	for_each_cpu(i, cpu_map) {
+		// 遍历该 CPU 对应的调度域
 		for (sd = *per_cpu_ptr(d.sd, i); sd; sd = sd->parent) {
 			sd->span_weight = cpumask_weight(sched_domain_span(sd));
 			if (sd->flags & SD_OVERLAP) {
 				if (build_overlap_sched_groups(sd, i))
 					goto error;
 			} else {
+				// 调用 build_sched_groups() 函数来创建调度组
 				if (build_sched_groups(sd, i))
 					goto error;
 			}
@@ -1979,6 +2032,7 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		if (rq->cpu_capacity_orig > READ_ONCE(d.rd->max_cpu_capacity))
 			WRITE_ONCE(d.rd->max_cpu_capacity, rq->cpu_capacity_orig);
 
+		// 把相关的调度域关联到 rq 的 root_domain 中，还会对各个级别的调度域做一些精简
 		cpu_attach_domain(sd, d.rd, i);
 	}
 	rcu_read_unlock();
@@ -2054,6 +2108,7 @@ void free_sched_domains(cpumask_var_t doms[], unsigned int ndoms)
  * For now this just excludes isolated CPUs, but could be used to
  * exclude other special cases in the future.
  */
+// 传入的参数是 cpu_active_mask
 int sched_init_domains(const struct cpumask *cpu_map)
 {
 	int err;
@@ -2067,7 +2122,9 @@ int sched_init_domains(const struct cpumask *cpu_map)
 	doms_cur = alloc_sched_domains(ndoms_cur);
 	if (!doms_cur)
 		doms_cur = &fallback_doms;
+	// housekeeping_cpumask 表示管家 CPU，其余的 CPU 用于实现动态无时钟内核特性
 	cpumask_and(doms_cur[0], cpu_map, housekeeping_cpumask(HK_FLAG_DOMAIN));
+	// 真正开始建立 CPU 调度域拓扑关系
 	err = build_sched_domains(doms_cur[0], NULL);
 	register_sched_domain_sysctl();
 

@@ -1964,6 +1964,9 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
  * Return: %true if @p->state changes (an actual wakeup was done),
  *	   %false otherwise.
  */
+// p 表示将要被唤醒的进程
+// state 表示唤醒进程的状态
+// wake_flags 表示唤醒标志位
 static int
 try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 {
@@ -2052,6 +2055,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		atomic_dec(&task_rq(p)->nr_iowait);
 	}
 
+	// 选择一个 CPU 并运行唤醒进程
 	cpu = select_task_rq(p, p->wake_cpu, SD_BALANCE_WAKE, wake_flags);
 	if (task_cpu(p) != cpu) {
 		wake_flags |= WF_MIGRATED;
@@ -2138,6 +2142,7 @@ out:
  *
  * This function executes a full memory barrier before accessing the task state.
  */
+// 唤醒进程
 int wake_up_process(struct task_struct *p)
 {
 	return try_to_wake_up(p, TASK_NORMAL, 0);

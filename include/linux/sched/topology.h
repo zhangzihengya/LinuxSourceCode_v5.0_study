@@ -74,10 +74,12 @@ struct sched_domain_shared {
 	int		has_idle_cores;
 };
 
+// 描述调度层级
 struct sched_domain {
 	/* These fields must be setup */
 	struct sched_domain *parent;	/* top domain must be null terminated */
 	struct sched_domain *child;	/* bottom domain must be null terminated */
+	// groups 指向该调度域里的调度组链表
 	struct sched_group *groups;	/* the balancing groups of the domain */
 	unsigned long min_interval;	/* Minimum balance interval ms */
 	unsigned long max_interval;	/* Maximum balance interval ms */
@@ -182,8 +184,10 @@ struct sd_data {
 	struct sched_group_capacity **__percpu sgc;
 };
 
+// 用于描述 CPU 的层级关系
 struct sched_domain_topology_level {
 	sched_domain_mask_f mask;			// 函数指针，用于指定某个 SDTL 的 cpumask 位图
+	// sd_flags 函数指针里指定了该调度层级的标志位
 	sched_domain_flags_f sd_flags;		// 函数指针，用于指定某个 SDTL 的标志位
 	int		    flags;
 	int		    numa_level;
