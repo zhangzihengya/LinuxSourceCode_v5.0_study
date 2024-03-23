@@ -44,6 +44,8 @@ struct thread_info {
 	u64			ttbr0;		/* saved TTBR0_EL1 */
 #endif
 	union {
+		// 当为 0 时，表示内核可以被安全抢占
+		// 当大于 0 时，则禁止抢占
 		u64		preempt_count;	/* 0 => preemptible, <0 => bug */
 		struct {
 #ifdef CONFIG_CPU_BIG_ENDIAN

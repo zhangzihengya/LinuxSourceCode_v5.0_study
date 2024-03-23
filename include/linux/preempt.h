@@ -166,6 +166,7 @@ extern void preempt_count_sub(int val);
 
 #ifdef CONFIG_PREEMPT_COUNT
 
+// 用于关抢占，给 thread_info 数据结构中的 preempt_count 成员加 1
 #define preempt_disable() \
 do { \
 	preempt_count_inc(); \
@@ -183,10 +184,13 @@ do { \
 #define preemptible()	(preempt_count() == 0 && !irqs_disabled())
 
 #ifdef CONFIG_PREEMPT
+// 用于打开抢占，给 thread_info 数据结构中的 preempt_count 成员减 1，然后程序会判断其是否为 0，
+// 如果为 0，则调用 __preempt_schedule() 函数完成调度抢占
 #define preempt_enable() \
 do { \
 	barrier(); \
 	if (unlikely(preempt_count_dec_and_test())) \
+		// 判断是否需要抢占当前进程
 		__preempt_schedule(); \
 } while (0)
 
