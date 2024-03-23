@@ -162,12 +162,14 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	const char *name;
 	int ret;
 
+	// 获取 CPU 设备
 	cpu_dev = get_cpu_device(policy->cpu);
 	if (!cpu_dev) {
 		pr_err("failed to get cpu%d device\n", policy->cpu);
 		return -ENODEV;
 	}
 
+	// 获取 CPU 设备的时钟
 	cpu_clk = clk_get(cpu_dev, NULL);
 	if (IS_ERR(cpu_clk)) {
 		ret = PTR_ERR(cpu_clk);
@@ -176,6 +178,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	}
 
 	/* Get OPP-sharing information from "operating-points-v2" bindings */
+	// 查询系统的设备树是否支持 operating-points-v2 格式的 OPP
 	ret = dev_pm_opp_of_get_sharing_cpus(cpu_dev, policy->cpus);
 	if (ret) {
 		if (ret != -ENOENT)
@@ -224,6 +227,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	 *
 	 * OPPs might be populated at runtime, don't check for error here
 	 */
+	// dev_pm_opp_of_cpumask_add_table() 函数用来初始化 OPP 表
 	if (!dev_pm_opp_of_cpumask_add_table(policy->cpus))
 		priv->have_static_opps = true;
 
@@ -231,6 +235,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	 * But we need OPP table to function so if it is not there let's
 	 * give platform code chance to provide it for us.
 	 */
+	// 获取 OPP 表的项数，用于检查 OPP 表创建是否成功
 	ret = dev_pm_opp_get_opp_count(cpu_dev);
 	if (ret <= 0) {
 		dev_dbg(cpu_dev, "OPP table is not ready, deferring probe\n");
@@ -251,6 +256,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 				__func__, ret);
 	}
 
+	// 用来创建 CPUfreq 表
 	ret = dev_pm_opp_init_cpufreq_table(cpu_dev, &freq_table);
 	if (ret) {
 		dev_err(cpu_dev, "failed to init cpufreq table: %d\n", ret);

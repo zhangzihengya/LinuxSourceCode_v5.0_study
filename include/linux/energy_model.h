@@ -17,9 +17,13 @@
  * @cost:	The cost coefficient associated with this level, used during
  *		energy calculation. Equal to: power * max_frequency / frequency
  */
+// 性能域容量状态
 struct em_cap_state {
+	// CPU 的频率，单位为千赫兹
 	unsigned long frequency;
+	// 在该频率下的功耗，单位是毫瓦（mW）
 	unsigned long power;
+	// 该频率下的能效系数，通常 cost = power x max_frequency / frequency 
 	unsigned long cost;
 };
 
@@ -34,9 +38,13 @@ struct em_cap_state {
  * micro-architecture. Performance domains often have a 1-to-1 mapping with
  * CPUFreq policies.
  */
+// 用于描述性能域
 struct em_perf_domain {
+	// table 指表述 CPU 频率和功耗之间关系的一个表
 	struct em_cap_state *table;
+	// 表示 CPU 有多少个频率点或者能力点
 	int nr_cap_states;
+	// cpus 表示这个性能域所包含的 CPU 位图
 	unsigned long cpus[0];
 };
 
@@ -59,6 +67,8 @@ struct em_data_callback {
 	 *
 	 * Return 0 on success.
 	 */
+	// 用于获取 OPP 表里的频率值（单位千赫兹）和计算好的功耗值（单位是毫瓦）
+	// 还函数会从 OPP 表的最低的频率开始往上查找，最后频率和功耗值会通过指针来呈现
 	int (*active_power)(unsigned long *power, unsigned long *freq, int cpu);
 };
 #define EM_DATA_CB(_active_power_cb) { .active_power = &_active_power_cb }
@@ -76,6 +86,10 @@ int em_register_perf_domain(cpumask_t *span, unsigned int nr_states,
  * Return: the sum of the energy consumed by the CPUs of the domain assuming
  * a capacity state satisfying the max utilization of the domain.
  */
+// 用于预测一个性能域的功耗情况
+// 参数 pd 表示将要预测哪个性能域的功耗情况
+// 参数 max_util 表示在这个性能域中所有的 CPU 里面最高的 CPU 使用率
+// 参数 sum_util 表示所有 CPU 的总 CPU 利用率
 static inline unsigned long em_pd_energy(struct em_perf_domain *pd,
 				unsigned long max_util, unsigned long sum_util)
 {
@@ -89,14 +103,21 @@ static inline unsigned long em_pd_energy(struct em_perf_domain *pd,
 	 * like schedutil.
 	 */
 	cpu = cpumask_first(to_cpumask(pd->cpus));
+	// 获取性能域里第一个 CPU 的额定算力，以进一步获得整个性能域中所有CPU的额定算力，因为性能域里所有 CPU 
+	// 基于相同的微处理器架构，额定算力也是一样的
 	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
+	// 获取该性能域里频率最高的表项（table中频率是升序）
 	cs = &pd->table[pd->nr_cap_states - 1];
+	// map_util_freq() 函数做一个映射，为 CPU 最大实际算力 max_util、CPU 额定算力以及 OPP 表里的最高频率
+	// 建立一个映射关系，以换算 max_util 对应的频率（freq）是多少
 	freq = map_util_freq(max_util, cs->frequency, scale_cpu);
 
 	/*
 	 * Find the lowest capacity state of the Energy Model above the
 	 * requested frequency.
 	 */
+	// 在 OPP 表里，查找一个正好和刚才换算出来的 freq 相等或者稍微大一点的频率点，接下来就使用这个频率点来计
+	// 算整个性能域的功耗
 	for (i = 0; i < pd->nr_cap_states; i++) {
 		cs = &pd->table[i];
 		if (cs->frequency >= freq)
@@ -145,6 +166,7 @@ static inline unsigned long em_pd_energy(struct em_perf_domain *pd,
 	 *   pd_nrg = ------------------------                       (4)
 	 *                  scale_cpu
 	 */
+	// 计算性能域的功耗
 	return cs->cost * sum_util / scale_cpu;
 }
 

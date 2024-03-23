@@ -5595,11 +5595,13 @@ static unsigned long target_load(int cpu, int type)
 	return max(rq->cpu_load[type-1], total);
 }
 
+// 获取当前 CPU 的 CFS 调度类的量化计算能力
 static unsigned long capacity_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity;
 }
 
+// 获取当前 CPU 额定计算能力
 static unsigned long capacity_orig_of(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity_orig;
@@ -6495,12 +6497,14 @@ static unsigned long cpu_util_next(int cpu, struct task_struct *p, int dst_cpu)
  * to compute what would be the energy if we decided to actually migrate that
  * task.
  */
+// 当进程 p 迁移到 dst_cpu 之后，计算系统的整体功耗值是多少
 static long
 compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 {
 	long util, max_util, sum_util, energy = 0;
 	int cpu;
 
+	// 首先在第一个 for 循环里，遍历系统中所有的性能域，然后计算每一个性能域的功耗，最后合并计算结果
 	for (; pd; pd = pd->next) {
 		max_util = sum_util = 0;
 		/*
@@ -6513,16 +6517,21 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 		 * it will not appear in its pd list and will not be accounted
 		 * by compute_energy().
 		 */
+		// 遍历性能域中每一个在线和活跃的 CPU
 		for_each_cpu_and(cpu, perf_domain_span(pd), cpu_online_mask) {
+			// 若进程 p 迁移到 dst_cpu，那么 cpu_util_next() 函数计算该 CPU 的实际算力
 			util = cpu_util_next(cpu, p, dst_cpu);
 			util = schedutil_energy_util(cpu, util);
 			max_util = max(util, max_util);
+			// sum_util 是该性能域中所有 CPU 的实际算力总和
 			sum_util += util;
 		}
 
+		// 通过该性能域的 max_util 和 sum_util 计算该性能域的整体功耗
 		energy += em_pd_energy(pd->em_pd, max_util, sum_util);
 	}
 
+	// 整体功耗 energy 是一个预测功耗，前提条件是进程 p 迁移到 dst_cpu
 	return energy;
 }
 
@@ -6565,7 +6574,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
  * other use-cases too. So, until someone finds a better way to solve this,
  * let's keep things simple by re-using the existing slow path.
  */
-
+// 查找一个能效比最优的 CPU
 static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
 {
 	unsigned long prev_energy = ULONG_MAX, best_energy = ULONG_MAX;
@@ -6577,6 +6586,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
 
 	rcu_read_lock();
 	pd = rcu_dereference(rd->pd);
+	// 若系统中没有初始化性能域或者满足 overutilized 条件，那么直接退出该函数
 	if (!pd || READ_ONCE(rd->overutilized))
 		goto fail;
 	head = pd;
@@ -6585,13 +6595,18 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
 	 * Energy-aware wake-up happens on the lowest sched_domain starting
 	 * from sd_asym_cpucapacity spanning over this_cpu and prev_cpu.
 	 */
+	// 读取当前 CPU 对应的 sd_asym_cpucapacity 调度域，sd_asym_cpucapacity 调度域表示有高速缓存共享属性的调度域
 	sd = rcu_dereference(*this_cpu_ptr(&sd_asym_cpucapacity));
+	// 从调度域往上查找一个合适的调度域，该合适的调度域需要包含当前 CPU 和 prev_cpu，因为这两个 CPU 是最有可能用来
+	// 运行这个待唤醒进程的 CPU
 	while (sd && !cpumask_test_cpu(prev_cpu, sched_domain_span(sd)))
 		sd = sd->parent;
 	if (!sd)
 		goto fail;
 
+	// 因为有一个进程马上要被唤醒了，所以更新该进程的 blocked 负载
 	sync_entity_load_avg(&p->se);
+	// task_util_est() 获取进程的实际算力
 	if (!task_util_est(p))
 		goto unlock;
 
@@ -6603,22 +6618,22 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
 			if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
 				continue;
 
-			/* Skip CPUs that will be overutilized. */
+			/* 跳过将被过度使用的cpu */
 			util = cpu_util_next(cpu, p, cpu);
 			cpu_cap = capacity_of(cpu);
 			if (cpu_cap * 1024 < util * capacity_margin)
 				continue;
 
-			/* Always use prev_cpu as a candidate. */
+			/* 总是使用prev_cpu作为候选。 */
 			if (cpu == prev_cpu) {
+				// compute_energy() 函数预测功耗的情况
 				prev_energy = compute_energy(p, prev_cpu, head);
 				best_energy = min(best_energy, prev_energy);
 				continue;
 			}
 
 			/*
-			 * Find the CPU with the maximum spare capacity in
-			 * the performance domain
+			 * 在性能域中查找空闲容量最大的CPU
 			 */
 			spare_cap = cpu_cap - util;
 			if (spare_cap > max_spare_cap) {
@@ -6627,7 +6642,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
 			}
 		}
 
-		/* Evaluate the energy impact of using this CPU. */
+		/* 评估使用此CPU对能源的影响 */
 		if (max_spare_cap_cpu >= 0) {
 			cur_energy = compute_energy(p, max_spare_cap_cpu, head);
 			if (cur_energy < best_energy) {
@@ -6640,8 +6655,7 @@ unlock:
 	rcu_read_unlock();
 
 	/*
-	 * Pick the best CPU if prev_cpu cannot be used, or if it saves at
-	 * least 6% of the energy used by prev_cpu.
+	 * 如果prev_cpu不能使用，或者它至少节省了prev_cpu使用的6%的能量，那么选择best_energy_cpu
 	 */
 	if (prev_energy == ULONG_MAX)
 		return best_energy_cpu;
@@ -6690,7 +6704,9 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	if (sd_flag & SD_BALANCE_WAKE) {
 		record_wakee(p);
 
+		// sched_energy_present 是一个全局变量，用于控制当前系统是否支持绿色节能调度器
 		if (static_branch_unlikely(&sched_energy_present)) {
+			// find_energy_efficient_cpu() 函数查找一个能效比最优的 CPU 来唤醒进程
 			new_cpu = find_energy_efficient_cpu(p, prev_cpu);
 			if (new_cpu >= 0)
 				return new_cpu;

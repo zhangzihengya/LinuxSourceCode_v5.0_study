@@ -101,6 +101,7 @@ struct opp_table *_find_opp_table(struct device *dev)
  *
  * This is useful only for devices with single power supply.
  */
+// 用于取回某个 OPP 的电压值
 unsigned long dev_pm_opp_get_voltage(struct dev_pm_opp *opp)
 {
 	if (IS_ERR_OR_NULL(opp)) {
@@ -119,6 +120,7 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_get_voltage);
  * Return: frequency in hertz corresponding to the opp, else
  * return 0
  */
+// 用于取回某个 OPP 的频率值
 unsigned long dev_pm_opp_get_freq(struct dev_pm_opp *opp)
 {
 	if (IS_ERR_OR_NULL(opp) || !opp->available) {
@@ -308,6 +310,7 @@ int _get_opp_count(struct opp_table *opp_table)
  * Return: This function returns the number of available opps if there are any,
  * else returns 0 if none or the corresponding error value.
  */
+// 用于获取设备的 OPP 表的项数
 int dev_pm_opp_get_opp_count(struct device *dev)
 {
 	struct opp_table *opp_table;
@@ -351,6 +354,7 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_get_opp_count);
  * The callers are required to call dev_pm_opp_put() for the returned OPP after
  * use.
  */
+// 用于在系统的 OPP 表里找给定的频率对应的 OPP
 struct dev_pm_opp *dev_pm_opp_find_freq_exact(struct device *dev,
 					      unsigned long freq,
 					      bool available)
@@ -427,6 +431,7 @@ static noinline struct dev_pm_opp *_find_freq_ceil(struct opp_table *opp_table,
  * The callers are required to call dev_pm_opp_put() for the returned OPP after
  * use.
  */
+// 用于在系统 OPP 表里查找一个给定的频率，返回一个不低于频率的 OPP
 struct dev_pm_opp *dev_pm_opp_find_freq_ceil(struct device *dev,
 					     unsigned long *freq)
 {
@@ -468,6 +473,7 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_find_freq_ceil);
  * The callers are required to call dev_pm_opp_put() for the returned OPP after
  * use.
  */
+// 用于在系统 OPP 表里查找一个给定的频率，返回一个不超过频率的 OPP
 struct dev_pm_opp *dev_pm_opp_find_freq_floor(struct device *dev,
 					      unsigned long *freq)
 {
@@ -1846,6 +1852,7 @@ unlock:
  *		Duplicate OPPs (both freq and volt are same) and !opp->available
  * -ENOMEM	Memory allocation failure
  */
+// 把一个新的 OPP 添加到 dev 指定的设备里，参数 freq 和 v_volt 构成一个新的 OPP
 int dev_pm_opp_add(struct device *dev, unsigned long freq, unsigned long u_volt)
 {
 	struct opp_table *opp_table;
@@ -1949,6 +1956,7 @@ put_table:
  * copy operation, returns 0 if no modification was done OR modification was
  * successful.
  */
+// 用于使能某个频率的 OPP
 int dev_pm_opp_enable(struct device *dev, unsigned long freq)
 {
 	return _opp_set_availability(dev, freq, true);
@@ -1969,6 +1977,7 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_enable);
  * copy operation, returns 0 if no modification was done OR modification was
  * successful.
  */
+// 用于关闭某个频率的 OPP
 int dev_pm_opp_disable(struct device *dev, unsigned long freq)
 {
 	return _opp_set_availability(dev, freq, false);

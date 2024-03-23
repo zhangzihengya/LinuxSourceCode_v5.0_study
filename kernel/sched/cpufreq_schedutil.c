@@ -819,6 +819,7 @@ static void sugov_exit(struct cpufreq_policy *policy)
 	cpufreq_disable_fast_switch(policy);
 }
 
+// 为每个 CPU 建立 schedutil 的一个回调函数
 static int sugov_start(struct cpufreq_policy *policy)
 {
 	struct sugov_policy *sg_policy = policy->governor_data;
@@ -843,6 +844,7 @@ static int sugov_start(struct cpufreq_policy *policy)
 	for_each_cpu(cpu, policy->cpus) {
 		struct sugov_cpu *sg_cpu = &per_cpu(sugov_cpu, cpu);
 
+		// 建立回调函数
 		cpufreq_add_update_util_hook(cpu, &sg_cpu->update_util,
 					     policy_is_shared(policy) ?
 							sugov_update_shared :
@@ -880,6 +882,7 @@ static void sugov_limits(struct cpufreq_policy *policy)
 	sg_policy->need_freq_update = true;
 }
 
+// CPUfreq 管理者子系统
 struct cpufreq_governor schedutil_gov = {
 	.name			= "schedutil",
 	.owner			= THIS_MODULE,

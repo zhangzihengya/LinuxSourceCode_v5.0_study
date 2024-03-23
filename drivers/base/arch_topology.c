@@ -132,6 +132,7 @@ static int free_raw_capacity(void)
 	return 0;
 }
 
+// 设置每个 CPU 的量化计算能力
 void topology_normalize_cpu_scale(void)
 {
 	u64 capacity;
@@ -154,6 +155,8 @@ void topology_normalize_cpu_scale(void)
 	mutex_unlock(&cpu_scale_mutex);
 }
 
+// 查找设备数的 capacity-dmips-mhz 节点，并且把该节点的值存放在全局变量 raw_capacity[] 数组里，
+// capacity_scale 用于存放最大值
 bool __init topology_parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 {
 	static bool cap_parsing_failed;

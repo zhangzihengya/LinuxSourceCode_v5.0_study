@@ -901,10 +901,11 @@ struct rq {
 	// 指向 CPU 对应的最低等级的调度域，如果系统中没有配置 CONFIG_SCHED_SMT，那么指向该 CPU 对应的 MC 等级调度域
 	struct sched_domain	*sd;
 
-	// CPU 对应普通进程的量化计算能力，系统大约会预留最高计算能力的 80% 给普通进程，预留 20% 给实时进程
+	// CPU 对应普通进程的量化计算能力，系统大约会预留最高计算能力的 80% 给普通进程，预留 20% 给实时进程，即 cpu_capacity
+	// 表示 CPU 在 CFS 调度类中的计算能力
 	unsigned long		cpu_capacity;
 	// CPU 最高的量化计算能力（cpu_capacity_orig 表示该 CPU 原本的计算能力，在系统启动之初，建立系统调度域拓扑时
-	// 就会计算每个 CPU 的计算能力）
+	// 就会计算每个 CPU 的计算能力），指所有调度器的计算能力之和，如 realtime 调度类、deadline 调度类和 CFS 调度类
 	unsigned long		cpu_capacity_orig;
 
 	struct callback_head	*balance_callback;
@@ -1361,6 +1362,7 @@ struct sched_group_capacity {
 	 * CPU capacity of this group, SCHED_CAPACITY_SCALE being max capacity
 	 * for a single CPU.
 	 */
+	// 指的都是 CFS 的计算能力
 	unsigned long		capacity;
 	unsigned long		min_capacity;		/* Min per-CPU capacity in group */
 	unsigned long		max_capacity;		/* Max per-CPU capacity in group */

@@ -23,6 +23,8 @@ static DEFINE_PER_CPU(struct em_perf_domain *, em_data);
  */
 static DEFINE_MUTEX(em_pd_mutex);
 
+// 创建一个性能域，并且创建一个新的表（em_cap_state）。在绿色节能调度器里，我们不会直接读取OPP子系统中的OPP表，
+// 而是读取能效模型子系统的 em_cap_state表。em_create_pd() 函数相当于在 OPP 表和 em_cap_state 表之间做了一个转换
 static struct em_perf_domain *em_create_pd(cpumask_t *span, int nr_states,
 						struct em_data_callback *cb)
 {
@@ -119,6 +121,7 @@ free_pd:
  * Return: the performance domain to which 'cpu' belongs, or NULL if it doesn't
  * exist.
  */
+// 获取一个给定 CPU 的性能域
 struct em_perf_domain *em_cpu_get(int cpu)
 {
 	return READ_ONCE(per_cpu(em_data, cpu));
@@ -139,6 +142,10 @@ EXPORT_SYMBOL_GPL(em_cpu_get);
  *
  * Return 0 on success
  */
+// 向能效模型软件层注册一个性能域
+// 参数 span 表示一个性能域的 CPU 位图，也就是该性能域包含哪几个 CPU
+// 参数 nr_states 表示有几个性能状态点
+// 参数 cb 表示一个回调函数，用于获取每个 OPP 的 CPU 频率和功耗数据，这些数据可以从设备数或者固件中获取
 int em_register_perf_domain(cpumask_t *span, unsigned int nr_states,
 						struct em_data_callback *cb)
 {
@@ -155,6 +162,8 @@ int em_register_perf_domain(cpumask_t *span, unsigned int nr_states,
 	 */
 	mutex_lock(&em_pd_mutex);
 
+	// 遍历 CPU 位图，检查这个 CPU 位图里每个 CPU 的计算能力是否一致，因为同一个性能域上所有的 CPU 必须同属
+	// 一个处理器架构，不能混搭不同架构的 CPU，如 Cortex-A53 和 Cortex-A73等
 	for_each_cpu(cpu, span) {
 		/* Make sure we don't register again an existing domain. */
 		if (READ_ONCE(per_cpu(em_data, cpu))) {
@@ -177,12 +186,15 @@ int em_register_perf_domain(cpumask_t *span, unsigned int nr_states,
 	}
 
 	/* Create the performance domain and add it to the Energy Model. */
+	// 创建一个性能域
 	pd = em_create_pd(span, nr_states, cb);
 	if (!pd) {
 		ret = -EINVAL;
 		goto unlock;
 	}
 
+	// 遍历 CPU 位图，把 pd 指针存放到每个 CPU 的 Per-CPU 类型的 em_data 变量里，方便以后使用
+	// em_cpu_get() 接口函数来获取每个 CPU 的 pd 指针
 	for_each_cpu(cpu, span) {
 		/*
 		 * The per-cpu array can be read concurrently from em_cpu_get().
